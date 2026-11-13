@@ -1,0 +1,42 @@
+{
+  "name": "@moba2d/content-tidelight",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets:generate": "moba2d-generate-assets",
+    "assets:check": "moba2d-generate-assets --check",
+    "catalog:generate": "moba2d-generate-spell-catalog --tree=tidelight --root=.",
+    "catalog:check": "moba2d-generate-spell-catalog --check --tree=tidelight --root=.",
+    "core:check": "moba2d-check-core-link",
+    "postinstall": "moba2d-check-core-link --warn-only",
+    "prepare": "npm run assets:generate && npm run catalog:generate",
+    "typecheck": "tsc -p tsconfig.json",
+    "check-unused": "moba2d-check-unused",
+    "check-seams": "moba2d-check-seams ./spells",
+    "reach:scan": "moba2d-reach-scan",
+    "fill:scan": "moba2d-fill-scan",
+    "test": "vitest run",
+    "build": "npm run assets:generate && npm run catalog:generate && vite build && moba2d-write-manifest --name=\"Tidelight\"",
+    "manifest:write": "moba2d-write-manifest --name=\"Tidelight\"",
+    "e2e:vfx": "moba2d-shoot-vfx",
+    "serve": "moba2d-pack-serve",
+    "play": "node scripts/game.mjs dev",
+    "play:lan": "node scripts/game.mjs dev --host",
+    "game:build": "node scripts/game.mjs build",
+    "game:preview": "node scripts/game.mjs preview",
+    "shots": "node scripts/shoot.mjs",
+    "art": "node scripts/make-art.mjs",
+    "hooks:install": "git config core.hooksPath scripts/git-hooks",
+    "verify": "npm run core:check && npm run assets:check && npm run catalog:check && npm run typecheck && npm run check-unused && npm run check-seams && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@moba2d/core": "file:../moba2d-core",
+    "@types/node": "^22.20.1",
+    "@types/p5": "^1.7.6",
+    "sharp": "^0.35.3",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.6.1"
+  }
+}

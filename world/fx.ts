@@ -1,0 +1,383 @@
+import type { AttackableUnit, CastSpec } from '@moba2d/core/content/types';
+import { api } from '../packApi';
+import { ensureHeart, getHeart, tideTraits, type Heart, type TideTraits } from './heart';
+import { BLUE, RED, type Court } from './layout';
+import { INK, courtColor, type Rgb } from './palette';
+import { ESCORT_RADIUS } from './rules';
+
+/**
+ * What the twenty-five spell files share: targeting helpers, the two status
+ * effects everyone uses, one paper-cut missile, one burst, and the passive
+ * that ties a hero to the tide.
+ *
+ * Spell modules import this; the data half never does (it builds engine
+ * classes at module scope, which needs the pack api to be set).
+ */
+export type Vec = { x: number; y: number };
+
+export const courtOf = (unit: { teamId?: string }): Court | null =>
+  unit.teamId === BLUE ? BLUE : unit.teamId === RED ? RED : null;
+
+export const heartOf = (unit: AttackableUnit): Heart | null => getHeart(unit.game);
+
+/** True while the tide runs for `unit`'s court. */
+export const tideIsWith = (unit: AttackableUnit): boolean => {
+  const court = courtOf(unit);
+  return court !== null && heartOf(unit)?.tide().favoured === court;
+};
+
+/** True while `unit` stands in the lantern's glow. */
+export const inGlow = (unit: AttackableUnit, extra = 0): boolean => {
+  const heart = heartOf(unit);
+  if (!heart) return false;
+  const at = heart.lanternPos;
+  return Math.hypot(unit.position.x - at.x, unit.position.y - at.y) <= ESCORT_RADIUS + extra;
+};
+
+/** A point exactly `range` from the caster toward the aim. */
+export const aimAt = (owner: AttackableUnit, aim: Vec, range: number) =>
+  api.utils.VectorUtils.getVectorWithRange(owner.position, aim as any, range).to;
+
+/** The aim point, pulled in to `range` if it lies beyond it. */
+export const aimWithin = (owner: AttackableUnit, aim: Vec, range: number) =>
+  api.utils.VectorUtils.getVectorWithMaxRange(owner.position, aim as any, range).to;
+
+export function enemiesAt(owner: AttackableUnit, at: Vec, radius: number): AttackableUnit[] {
+  return owner.game.objectManager.queryObjects({
+    area: new api.utils.Quadtree.Circle({ x: at.x, y: at.y, r: radius }),
+    filters: [api.combat.PredefinedFilters.canTakeDamageFromTeam(owner.teamId)],
+  }) as AttackableUnit[];
+}
+
+/** Allied champions (the caster included) within `radius` of `at`. */
+export function alliesAt(owner: AttackableUnit, at: Vec, radius: number): AttackableUnit[] {
+  const found = owner.game.objectManager.queryObjects({
+    area: new api.utils.Quadtree.Circle({ x: at.x, y: at.y, r: radius }),
+    filters: [api.combat.PredefinedFilters.canTakeDamage],
+  }) as AttackableUnit[];
+  const allies = found.filter(
+    unit => unit.teamId === owner.teamId && unit instanceof api.units.Champion
+  );
+  if (!allies.includes(owner)) allies.push(owner);
+  return allies;
+}
+
+export function slow(owner: AttackableUnit, target: AttackableUnit, percent: number, ms: number, id: string): void {
+  const buff = new api.buffs.Slow(ms, owner, target);
+  buff.percent = percent;
+  buff.buffAddType = api.enums.BuffAddType.RENEW_EXISTING;
+  buff.stackId = id;
+  target.addBuff(buff);
+}
+
+export function haste(owner: AttackableUnit, target: AttackableUnit, percent: number, ms: number, id: string): void {
+  const buff = new api.buffs.Speedup(ms, owner, target);
+  buff.percent = percent;
+  buff.buffAddType = api.enums.BuffAddType.RENEW_EXISTING;
+  buff.stackId = id;
+  target.addBuff(buff);
+}
+
+type PulseStyle = InstanceType<typeof api.AoePulse>['style'];
+
+/** A one-shot ring/splash at a point — the "something happened here" every hit hands off to. */
+export function burst(
+  owner: AttackableUnit,
+  at: Vec,
+  radius: number,
+  color: Rgb,
+  style: PulseStyle = 'ring',
+  lifeMs = 420
+): void {
+  const pulse = new api.AoePulse(owner);
+  pulse.position = createVector(at.x, at.y);
+  pulse.radius = radius;
+  pulse.lifeTime = lifeMs;
+  pulse.color = [color[0], color[1], color[2]];
+  pulse.style = style;
+  owner.game.objectManager.addObject(pulse);
+}
+
+export type BoltShape = 'pearl' | 'spark' | 'gust' | 'hook';
+
+/**
+ * The pack's one missile: a flat paper shape with a dark sheet under it and a
+ * short tail of fading copies. The shape says whose it is.
+ */
+export class PaperBolt extends api.MissileSpellObject {
+  speed = 13;
+  size = 22;
+  damage = 20;
+  maxHitCount = 1;
+  tint: Rgb = INK.CREAM;
+  shape: BoltShape = 'pearl';
+  /** Runs after the damage lands. */
+  afterHit: ((target: AttackableUnit) => void) | null = null;
+  private origin = { x: this.position.x, y: this.position.y };
+
+  onHit(target: AttackableUnit): void {
+    target.takeDamage(this.damage, this.owner);
+    this.afterHit?.(target);
+    const pulse = new api.AoePulse(this.owner);
+    pulse.position = createVector(target.position.x, target.position.y);
+    pulse.radius = this.size * 2.4;
+    pulse.lifeTime = 300;
+    pulse.color = [this.tint[0], this.tint[1], this.tint[2]];
+    pulse.style = 'splash';
+    this.game.objectManager.addObject(pulse);
+  }
+
+  draw(): void {
+    const at = this.position;
+    const to = this.destination ?? at;
+    const heading = Math.atan2(to.y - at.y, to.x - at.x);
+    const c = this.tint;
+    const s = this.size;
+    push();
+    translate(at.x, at.y);
+    rotate(heading);
+    noStroke();
+    // Tail: three shrinking copies behind.
+    for (let i = 3; i >= 1; i--) {
+      fill(c[0], c[1], c[2], 70 - i * 16);
+      ellipse(-i * s * 0.8, 0, s * (1.1 - i * 0.2), s * (0.8 - i * 0.16));
+    }
+    fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2], 150);
+    ellipse(3, 6, s * 1.2, s);
+    fill(c[0], c[1], c[2]);
+    if (this.shape === 'pearl') {
+      circle(0, 0, s);
+      fill(255, 255, 255, 220);
+      circle(-s * 0.16, -s * 0.18, s * 0.34);
+    } else if (this.shape === 'spark') {
+      triangle(s * 0.9, 0, -s * 0.5, -s * 0.5, -s * 0.5, s * 0.5);
+      fill(INK.LANTERN_HOT[0], INK.LANTERN_HOT[1], INK.LANTERN_HOT[2]);
+      triangle(s * 0.5, 0, -s * 0.3, -s * 0.24, -s * 0.3, s * 0.24);
+    } else if (this.shape === 'gust') {
+      noFill();
+      stroke(c[0], c[1], c[2]);
+      strokeWeight(5);
+      arc(0, 0, s * 1.6, s * 1.4, -Math.PI / 2, Math.PI / 2);
+      arc(-s * 0.6, 0, s * 1.2, s, -Math.PI / 2, Math.PI / 2);
+    } else {
+      // The hook: a line back to the thrower is drawn in world space below.
+      noFill();
+      stroke(c[0], c[1], c[2]);
+      strokeWeight(6);
+      arc(0, 0, s * 1.3, s * 1.3, -Math.PI * 0.75, Math.PI * 0.75);
+      line(-s * 0.65, 0, s * 0.2, 0);
+    }
+    pop();
+    if (this.shape === 'hook') {
+      push();
+      stroke(c[0], c[1], c[2], 170);
+      strokeWeight(3);
+      line(this.owner.position.x, this.owner.position.y, at.x, at.y);
+      pop();
+    }
+  }
+
+  getDisplayBoundingBox() {
+    if (this.shape !== 'hook') return this.squareDisplayBoundingBox(this.size * 6);
+    const far = Math.hypot(this.position.x - this.origin.x, this.position.y - this.origin.y);
+    return this.squareDisplayBoundingBox(far * 2 + this.size * 6);
+  }
+}
+
+/** Fire a `PaperBolt` from the caster toward the aim. */
+export function fireBolt(
+  owner: AttackableUnit,
+  aim: Vec,
+  range: number,
+  setup: Partial<Pick<PaperBolt, 'speed' | 'size' | 'damage' | 'maxHitCount' | 'tint' | 'shape' | 'afterHit'>>
+): PaperBolt {
+  const bolt = new PaperBolt(owner);
+  Object.assign(bolt, setup);
+  bolt.destination = aimAt(owner, aim, range);
+  owner.game.objectManager.addObject(bolt);
+  return bolt;
+}
+
+/**
+ * A lingering patch of ground that ticks on the enemies standing in it:
+ * Gull's squall, Nacre's moon pool. Flat disc, dashed rim, a few glyphs
+ * circling — readable under a crowd, cheap to draw.
+ */
+export class TideZone extends api.AreaSpellObject {
+  zIndex = api.layers.GROUND_Z_INDEX;
+  tint: Rgb = INK.TIDE;
+  glyph: 'storm' | 'pool' = 'pool';
+  lifeMs = 3000;
+
+  draw(): void {
+    const at = this.center;
+    const t = this.elapsedMs / 1000;
+    const fade = Math.min(1, Math.max(0, (this.lifeMs - this.elapsedMs) / 400));
+    const c = this.tint;
+    push();
+    noStroke();
+    fill(c[0], c[1], c[2], 46 * fade);
+    circle(at.x, at.y, this.radius * 2);
+    noFill();
+    stroke(c[0], c[1], c[2], 210 * fade);
+    strokeWeight(4);
+    const dashes = 18;
+    for (let i = 0; i < dashes; i++) {
+      const a0 = t * 0.9 + (i / dashes) * Math.PI * 2;
+      arc(at.x, at.y, this.radius * 2, this.radius * 2, a0, a0 + (Math.PI / dashes) * 1.1);
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = -t * 1.8 + (i / 5) * Math.PI * 2;
+      const r = this.radius * (0.35 + 0.3 * ((i * 37) % 10) * 0.1);
+      const x = at.x + Math.cos(a) * r;
+      const y = at.y + Math.sin(a) * r;
+      if (this.glyph === 'storm') {
+        arc(x, y, 46, 30, a, a + Math.PI);
+      } else {
+        circle(x, y, 16 + Math.sin(t * 4 + i) * 5);
+      }
+    }
+    pop();
+  }
+}
+
+/** Lay a `TideZone` that ticks `onTick` on each enemy inside every `tickMs`. */
+export function layZone(
+  owner: AttackableUnit,
+  at: Vec,
+  radius: number,
+  lifeMs: number,
+  tickMs: number,
+  onTick: (target: AttackableUnit) => void,
+  look: { tint: Rgb; glyph: 'storm' | 'pool' }
+): TideZone {
+  const zone = new TideZone(owner, { x: at.x, y: at.y }, radius, {
+    durationMs: lifeMs,
+    tickEveryMs: tickMs,
+    candidateFilter: target => target.teamId !== owner.teamId && !target.isDead && target.targetable,
+    onTick,
+  });
+  zone.tint = look.tint;
+  zone.glyph = look.glyph;
+  zone.lifeMs = lifeMs;
+  owner.game.objectManager.addObject(zone);
+  return zone;
+}
+
+export type Ornament ='anchor' | 'shell' | 'flame' | 'fin' | 'feather';
+
+/**
+ * The mark a hero's passive leaves on them: a small paper ornament orbiting
+ * the portrait, a court-coloured ground ring, and — while a pearl's glow is on
+ * them — a pearl riding along. It is how you tell five heroes apart at phone
+ * size without reading a name.
+ */
+export class TideMark extends api.buffs.Buff {
+  name = 'Dấu Triều';
+  hudVisible = false;
+  survivesDeath = true;
+  ornament: Ornament = 'anchor';
+  tint: Rgb = INK.CREAM;
+  /** Called about four times a second with the hero; the passive's actual rule. */
+  rule: ((unit: AttackableUnit, dtMs: number) => void) | null = null;
+  private clock = 0;
+  private age = 0;
+
+  onUpdate(): void {
+    this.age += deltaTime;
+    this.clock += deltaTime;
+    if (this.clock < 250) return;
+    const dt = this.clock;
+    this.clock = 0;
+    if (!this.targetUnit.isDead) this.rule?.(this.targetUnit, dt);
+  }
+
+  draw(): void {
+    const unit = this.targetUnit;
+    if (unit.isDead) return;
+    const at = unit.position;
+    const size = unit.stats.size.value;
+    const t = this.age / 1000;
+    const court = courtColor(unit.teamId ?? null);
+    const c = this.tint;
+    push();
+    // Ground ring, in the court's colour, under the feet.
+    noFill();
+    stroke(court[0], court[1], court[2], 120);
+    strokeWeight(3);
+    ellipse(at.x, at.y + size * 0.42, size * 1.5, size * 0.5);
+    noStroke();
+
+    // Two ornaments orbiting on a tilted ellipse.
+    for (let i = 0; i < 2; i++) {
+      const a = t * 1.7 + i * Math.PI;
+      const ox = at.x + Math.cos(a) * size * 0.78;
+      const oy = at.y + Math.sin(a) * size * 0.3 - size * 0.1;
+      const k = size * 0.2;
+      fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2], 140);
+      circle(ox + 2, oy + 4, k * 1.3);
+      fill(c[0], c[1], c[2]);
+      if (this.ornament === 'anchor') {
+        rect(ox - k * 0.16, oy - k * 0.7, k * 0.32, k * 1.2, 2);
+        arc(ox, oy + k * 0.2, k * 1.3, k * 1.1, 0, Math.PI);
+      } else if (this.ornament === 'shell') {
+        arc(ox, oy + k * 0.3, k * 1.5, k * 1.6, Math.PI, Math.PI * 2);
+      } else if (this.ornament === 'flame') {
+        triangle(ox, oy - k * 0.9, ox - k * 0.5, oy + k * 0.4, ox + k * 0.5, oy + k * 0.4);
+        circle(ox, oy + k * 0.2, k);
+      } else if (this.ornament === 'fin') {
+        triangle(ox - k * 0.7, oy + k * 0.5, ox + k * 0.7, oy + k * 0.5, ox + k * 0.3, oy - k * 0.8);
+      } else {
+        ellipse(ox, oy, k * 0.6, k * 1.7);
+      }
+    }
+
+    const heart = heartOf(unit) as (Heart & { glowing?: (u: object) => boolean }) | null;
+    if (heart?.glowing?.(unit)) {
+      const bob = Math.sin(t * 4) * 3;
+      fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2], 70);
+      circle(at.x, at.y - size * 0.86 + bob, size * 0.5);
+      fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2]);
+      circle(at.x, at.y - size * 0.86 + bob, size * 0.26);
+    }
+    pop();
+  }
+}
+
+/**
+ * Base for the five passives. Pressing it (once per life, by core) makes sure
+ * the match has its Heart, registers the hero's traits with it and pins the
+ * `TideMark` on.
+ */
+export abstract class TidePassive extends api.Spell {
+  targetingMode = 'SELF' as const;
+  coolDown = 0;
+  manaCost = 0;
+  abstract ornament: Ornament;
+  abstract tint: Rgb;
+  traits: TideTraits = {};
+
+  get castSpec(): CastSpec {
+    return {
+      activation: 'PRESS',
+      targeting: 'SELF',
+      castTimeMs: 0,
+      resource: { commitAt: 'start', refundOn: [] },
+      cooldown: { startAt: 'start', durationMs: 0 },
+    };
+  }
+
+  /** The per-tick rule, if this passive has one. */
+  rule(_unit: AttackableUnit, _dtMs: number): void {}
+
+  onSpellCast(): void {
+    ensureHeart(this.game);
+    tideTraits.set(this.owner, this.traits);
+    const mark = new TideMark(0, this.owner, this.owner);
+    mark.stackId = `tidelight-mark-${this.ornament}`;
+    mark.ornament = this.ornament;
+    mark.tint = this.tint;
+    mark.rule = (unit, dt) => this.rule(unit, dt);
+    this.owner.addBuff(mark);
+  }
+}
