@@ -109,7 +109,7 @@ export const dryShoal = (tide: TideState): 'north' | 'south' | null =>
 /** World units per second the lantern moves for a net escort of 1, 2, 3+. */
 export const PUSH_SPEED = [0, 30, 42, 50] as const;
 /** World units per second the current carries the lantern toward the unfavoured court's base. */
-export const CURRENT_SPEED = 10;
+export const CURRENT_SPEED = 14;
 /** How close a body has to be to count as escorting. */
 export const ESCORT_RADIUS = 270;
 /** What one minion is worth, and the most a whole wave can add up to. */
@@ -125,9 +125,9 @@ export const RELIGHT_MS = 4_000;
  * to hit a tower: pressing the lantern on the gate *is* the siege, and a
  * standing warden (320) gives way after ~18 s of uncontested holding.
  */
-export const GATE_BURN_PER_S = 18;
+export const GATE_BURN_PER_S = 28;
 /** A match that reaches this length is settled on lights, then on where the lantern is. */
-export const MATCH_CAP_MS = 8 * 60_000;
+export const MATCH_CAP_MS = 6 * 60_000;
 
 export interface Escort {
   /** Weighted bodies of each court standing in the lantern's glow. */

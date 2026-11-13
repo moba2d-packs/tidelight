@@ -1,5 +1,6 @@
 import type { AttackableUnit } from '@moba2d/core/content/types';
 import { api } from '../packApi';
+import { issueCharms } from './charms';
 import { TideHud } from './hud';
 import {
   BLUE,
@@ -333,6 +334,9 @@ function build() {
       if (this.shoalClock >= SHOAL_TICK_MS) {
         this.shoalClock = 0;
         this.runShoals(tide);
+        for (const unit of this.unitsNear(CENTER, MAP_SIZE)) {
+          if (unit instanceof Champion) issueCharms(unit);
+        }
       }
 
       if (now >= this.relightUntilMs) {

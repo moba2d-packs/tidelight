@@ -5,6 +5,7 @@
  *   node scripts/game.mjs dev   [--port 5311] [--host]   # play it, with HMR
  *   node scripts/game.mjs build                          # static site -> dist-game/
  *   node scripts/game.mjs preview [--port 5312] [--host] # serve dist-game/
+ *   node scripts/game.mjs dev --runtime [--port 5313]    # bare core, to install this pack by URL
  *
  * Core is an engine with a lobby; which packs that lobby offers is decided by
  * one generated file, `src/generated/installedPacks.ts`, which other people's
@@ -42,8 +43,8 @@ export const installedPackNames = ['reference', 'tidelight'];
 const bot = () => ({
   mode: 'champion',
   championName: 'random',
-  summonerD: 'Flash',
-  summonerF: 'Heal',
+  summonerD: 'Charm_Riptide',
+  summonerF: 'Charm_Lampglass',
 });
 
 /** First-run lobby: this map, 3v3, jungle slots on (the Heart lives in one). */
@@ -51,7 +52,7 @@ const SEED = {
   config: {
     mapId: 'tidelight:driftglass',
     playerTeam: 'team-blue',
-    player: { mode: 'champion', championName: 'Wick', summonerD: 'Flash', summonerF: 'Heal' },
+    player: { mode: 'champion', championName: 'Wick', summonerD: 'Charm_Riptide', summonerF: 'Charm_Lampglass' },
     ai: {
       count: 5,
       bots: [bot(), bot(), bot(), bot(), bot()],
@@ -65,7 +66,7 @@ const SEED = {
 const SEED_SCRIPT = `
 (function () {
   try {
-    var done = 'tidelight:lobby-seeded:v4';
+    var done = 'tidelight:lobby-seeded:v5';
     if (localStorage.getItem(done)) return;
     localStorage.setItem('moba2d:pregameConfig:v1', ${JSON.stringify(JSON.stringify(SEED.config))});
     localStorage.setItem('moba2d:championPool:v1', ${JSON.stringify(JSON.stringify(SEED.pool))});
@@ -77,16 +78,26 @@ const SEED_SCRIPT = `
 })();
 `;
 
+// `--runtime`: core as it is deployed — no pack compiled in, no seeded lobby —
+// so this pack can be installed into it from a manifest URL, the way a player
+// would (`npm run build && npm run serve`, then the Packs screen).
+const RUNTIME = process.argv.includes('--runtime');
+const RUNTIME_SOURCE = `
+export const installedPacks = [];
+export const installedPackNames = ['reference'];
+`;
+
 const tidelightOnly = () => ({
   name: 'tidelight-only',
   enforce: 'pre',
   load(id) {
     if (id.split('?')[0].split('\\').join('/') === INSTALLED.split('\\').join('/')) {
-      return INSTALLED_SOURCE;
+      return RUNTIME ? RUNTIME_SOURCE : INSTALLED_SOURCE;
     }
     return null;
   },
   transformIndexHtml(html) {
+    if (RUNTIME) return html;
     return {
       html: html.replace(/<title>[^<]*<\/title>/, '<title>Tidelight — Triều Đăng</title>'),
       tags: [{ tag: 'script', children: SEED_SCRIPT, injectTo: 'head-prepend' }],

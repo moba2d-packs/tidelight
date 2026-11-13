@@ -199,7 +199,27 @@ const GLYPHS = {
   },
 };
 
+// The D/F shelf: two sea charms, on a round amber-rimmed token so they read as
+// "not a hero's skill" at a glance.
+const charm = glyph => `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="26" fill="${C.deep}"/>
+  <circle cx="64" cy="64" r="54" fill="${C.seabed}"/>
+  <circle cx="64" cy="64" r="54" fill="none" stroke="${C.lantern}" stroke-width="4" stroke-dasharray="10 8"/>
+  <g transform="translate(3 5)" opacity=".55">${glyph(C.shadow, C.shadow)}</g>
+  ${glyph(C.tide, C.cream)}
+</svg>`;
+const CHARMS = {
+  riptide: (a, b) =>
+    `<path d="M22 84 q20 -40 44 -14 q22 24 42 -18" ${S(a, 11)}/><path d="M90 44 l20 6 l-8 20" ${S(a, 9)}/><path d="M26 104 h46" ${S(b, 6)}/><path d="M30 34 h30" ${S(b, 6)}/>`,
+  lampglass: (a, b) =>
+    `<path d="M64 20 l32 12 v30 q0 30 -32 46 q-32 -16 -32 -46 v-30Z" fill="${a}"/><path d="M64 44 q14 14 0 34 q-14 -20 0 -34Z" fill="${C.lantern}"/><path d="M44 40 v22" ${S(b, 5)}/>`,
+};
+
 const jobs = [];
+for (const [name, glyph] of Object.entries(CHARMS)) {
+  jobs.push(sharp(Buffer.from(charm(glyph))).png().toFile(join(OUT, `charm_${name}.png`)));
+}
 for (const [name, svg] of Object.entries(PORTRAITS)) {
   jobs.push(sharp(Buffer.from(svg)).png().toFile(join(OUT, `champ_${name}.png`)));
 }
@@ -209,5 +229,19 @@ for (const [name, glyphs] of Object.entries(GLYPHS)) {
     jobs.push(sharp(Buffer.from(svg)).png().toFile(join(OUT, `spell_${name}_${slot}.png`)));
   }
 }
+// The pack's own logo, served beside the manifest as `icon.png` (core's Packs
+// shelf paints it): the Lantern riding a wave.
+const LOGO = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect width="256" height="256" rx="56" fill="${C.deep}"/>
+  <circle cx="128" cy="112" r="84" fill="${C.lantern}" opacity=".16"/>
+  <circle cx="128" cy="112" r="56" fill="${C.lantern}" opacity=".22"/>
+  <path d="M104 62 h48 l10 14 v70 q0 16 -16 16 h-36 q-16 0 -16 -16 v-70Z" fill="${C.lantern}" stroke="${C.abyss}" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M128 86 q20 22 0 52 q-20 -30 0 -52Z" fill="${C.hot}"/>
+  <path d="M110 56 q18 -26 36 0" stroke="${C.cream}" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M20 196 q28 -34 54 0 t54 0 t54 0 t54 0 v60 h-216Z" fill="${C.tide}"/>
+  <path d="M20 222 q28 -30 54 0 t54 0 t54 0 t54 0 v40 h-216Z" fill="${C.reef}"/>
+</svg>`;
+jobs.push(sharp(Buffer.from(LOGO)).png().toFile(join(OUT, '..', 'public', 'icon.png')));
 await Promise.all(jobs);
 console.log(`make-art: wrote ${jobs.length} images to ${OUT}`);

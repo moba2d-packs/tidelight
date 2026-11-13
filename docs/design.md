@@ -12,7 +12,7 @@ and the **Ember Court** (red, east) — each want to walk it to the far dock and
 light their beacons with it.
 
 There is no base to destroy and no gold curve to climb. A match is **3v3,
-first to 2 Lights, capped at 8 minutes**; a typical one is meant to take 4–6.
+first to 2 Lights, capped at 6 minutes**; a typical one is meant to take 4–6.
 
 ## 2. The signature mechanic: the tide carries the Lantern
 
@@ -40,7 +40,7 @@ Three rules, all visible on screen at once.
    second while an escort keeps it there. Pushing *is* the siege.
 
 Deliver the Lantern to the dock: one Light, the Lantern relights in the middle
-after 4 s. Two Lights win. At the 8-minute cap the court with more Lights wins,
+after 4 s. Two Lights win. At the 6-minute cap the court with more Lights wins,
 then whichever court holds the Lantern on the enemy's half.
 
 Why no mainstream MOBA has this: the objective is a *single shared object whose
@@ -135,13 +135,40 @@ without looking at the minimap.
 - `scripts/game.mjs` — runs core with *only this pack* by answering core's
   generated pack list from memory; core's files are not modified.
 
-## 8. Known limits
+## 8. Sea charms (D / F)
 
-- Balance is first-pass. In an unattended bot match (2 bots vs 3) the first
-  Warden fell at ~2:50, the first Light came at ~4:50, and the match went to
-  the 8-minute cap at 1–0 — longer than the 4–6 minute target.
-- Bots fight in the channel, which escorts the Lantern as a side effect; they
-  do not yet reason about tides, pearls or flooded flanks.
-- Summoner slots (`D`/`F`) show a placeholder icon: this pack ships no
-  summoner spells.
-- The main menu and lobby are core's and still carry the engine's name.
+Two summoner-style spells of this pack's own, on core's `summonerShelf` row:
+
+| Key | Charm | What it does |
+|---|---|---|
+| D | **Sóng Rút** (Riptide) | Short dash, no mana, 12 s. Half as far again while the tide runs your way. |
+| F | **Kính Đèn** (Lampglass) | 22 shield for 2.5 s, 12 s. 36 inside the Lantern's glow. |
+
+Core has **one** D/F shelf for a whole install (the first pack that declares
+one), and a saved loadout names spells by id. So with another pack installed
+in front of this one, or with a saved `Flash`/`Heal`, a hero would arrive with
+someone else's spells — or with one charm in both slots. `world/charms.ts`
+therefore makes it a rule of the map: on Driftglass Reef the Heart hands every
+hero both charms (and leaves alone a hero who already carries both, in either
+order).
+
+## 9. HUD layout
+
+Core's score strip owns the top 34 px and its kill feed starts right under it.
+The Lantern strip takes the row between them, and while a Tidelight match is
+up `body.tidelight-on` moves core's `.kill-callouts` one row down — CSS from
+the pack, removed when the match ends, no core change. Announcements ("Triều
+Lam dâng!") replace the tide pill for their two seconds instead of floating
+under the feed. Under 520 px wide the strip stacks into two rows.
+
+## 10. Known limits
+
+- Balance is first-pass. Bots fight in the channel, which escorts the Lantern
+  as a side effect; they do not reason about tides, pearls or flooded flanks.
+  The match is capped at 6:00 (most Lights wins). One unattended bot match
+  (2 bots vs 3, player idle) ended 0–2 at 5:56: first Light at ~4:30.
+- Sea charms replace whatever D/F a hero brought, on this map only — a player
+  who picked another pack's summoner spells does not keep them here.
+- The main menu and lobby are core's, shared by every pack.
+- Not tested on a real phone; portrait is laid out but core itself asks the
+  player to rotate.

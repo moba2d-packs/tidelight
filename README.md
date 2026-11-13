@@ -12,6 +12,8 @@ npm install
 npm run play          # -> http://127.0.0.1:5311/   (phone layout: add ?touch=1)
 npm run play:lan      # same, reachable from a phone on the same Wi-Fi
 npm run game:build    # static site -> dist-game/
+npm run build         # the runtime pack -> dist/ (manifest.json, pack.js, assets/, icon.png)
+npm run serve         # serve dist/ on http://127.0.0.1:5174/manifest.json, to install by URL
 npm run game:preview  # serve dist-game/ on http://127.0.0.1:5312/
 npm run shots         # Playwright screenshots -> docs/screenshots/ (needs `npm run play` running)
 npm run art           # regenerate portraits and icons from scripts/make-art.mjs

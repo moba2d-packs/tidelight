@@ -9,7 +9,7 @@
  * touch): the lobby, the opening, a fight at the lantern after a few casts, a
  * turned tide, and the end card. Playwright comes from core's own devDeps.
  *
- * `--url`, `--only desktop|phone` and `--hero <name>` narrow a run;
+ * `--url`, `--only desktop|phone|portrait` and `--hero <name>` narrow a run;
  * `--cpu 4` throttles the CPU 4x to stand in for a mid-range phone.
  */
 import { mkdirSync, realpathSync } from 'node:fs';
@@ -30,6 +30,27 @@ const URL_BASE = flag('url', 'http://127.0.0.1:5311/');
 const ONLY = flag('only', '');
 const HERO = flag('hero', '');
 const CPU = Number(flag('cpu', '1')) || 1;
+// `--install <manifest url>`: the page is a bare core; install this pack into
+// it through the Packs screen first, the way a player does, then play.
+const INSTALL = flag('install', '');
+const PREFIX = flag('prefix', '');
+
+const LOBBY = {
+  mapId: 'tidelight:driftglass',
+  playerTeam: 'team-blue',
+  player: { mode: 'champion', championName: 'Wick', summonerD: 'Charm_Riptide', summonerF: 'Charm_Lampglass' },
+  ai: {
+    count: 5,
+    bots: Array.from({ length: 5 }, () => ({
+      mode: 'champion',
+      championName: 'random',
+      summonerD: 'Charm_Riptide',
+      summonerF: 'Charm_Lampglass',
+    })),
+    botTeams: ['team-blue', 'team-blue', 'team-red', 'team-red', 'team-red'],
+  },
+  world: { jungle: true, minions: true },
+};
 const OUT = join(PACK, 'docs', 'screenshots');
 mkdirSync(OUT, { recursive: true });
 
@@ -55,8 +76,8 @@ async function run(name, viewport, touch) {
     if (message.type() === 'error') errors.push(message.text());
   });
   const shot = async label => {
-    await page.screenshot({ path: join(OUT, `${name}-${label}.png`) });
-    console.log(`  ${name}-${label}.png`);
+    await page.screenshot({ path: join(OUT, `${PREFIX}${name}-${label}.png`) });
+    console.log(`  ${PREFIX}${name}-${label}.png`);
   };
 
   if (HERO) {
@@ -73,9 +94,49 @@ async function run(name, viewport, touch) {
     }, HERO);
   }
 
+  if (INSTALL) {
+    // Core's Packs shelf paints this pack's logo from where it will be
+    // published. Until it is, answer that one URL from the local pack server.
+    const local = INSTALL.replace(/manifest\.json$/, '');
+    await page.route('https://moba2d-packs.github.io/tidelight/**', async route => {
+      const file = route.request().url().split('/tidelight/')[1];
+      const response = await fetch(local + file);
+      await route.fulfill({
+        status: response.status,
+        headers: { 'content-type': response.headers.get('content-type') ?? '', 'access-control-allow-origin': '*' },
+        body: Buffer.from(await response.arrayBuffer()),
+      });
+    });
+    // No default-pack download on this first boot: the proof is this pack alone.
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('moba2d:packs:seeded:v1', '1');
+      } catch {}
+    });
+  }
   await page.goto(URL_BASE + (touch ? '?touch=1' : ''));
   if (HERO) await page.reload();
   await page.waitForSelector('#play-btn', { timeout: 60_000 });
+  if (INSTALL) {
+    await page.click('#packs-btn');
+    await page.waitForSelector('#packs-tab-browse', { timeout: 30_000 });
+    await page.click('#packs-tab-browse');
+    await page.fill('#pack-url-input', INSTALL);
+    await page.click('#pack-url-check');
+    await page.waitForSelector('#pack-confirm-install', { timeout: 30_000 });
+    await sleep(300);
+    await shot('0-install');
+    await page.click('#pack-confirm-install');
+    await page.waitForSelector('#pack-confirm-install', { state: 'detached', timeout: 60_000 });
+    await sleep(2500);
+    await shot('0-installed');
+    await page.evaluate(lobby => {
+      localStorage.setItem('moba2d:pregameConfig:v1', JSON.stringify(lobby));
+      localStorage.setItem('moba2d:championPool:v1', JSON.stringify({ disabledPacks: ['reference'] }));
+    }, LOBBY);
+    await page.reload();
+    await page.waitForSelector('#play-btn', { timeout: 60_000 });
+  }
   await sleep(600);
   await shot('1-menu');
   await page.click('#play-btn');
@@ -137,7 +198,20 @@ async function run(name, viewport, touch) {
     await sleep(200);
     await page.keyboard.press('e');
   }
-  await sleep(700);
+  // A kill, so core's feed and banner are on screen with the Lantern strip.
+  const killed = await page.evaluate(() => {
+    const t = window.__tidelight;
+    if (!t) return null;
+    const me = t.game.player;
+    const foe = t.heart
+      .unitsNear({ x: 1500, y: 1500 }, 5000)
+      .find(unit => unit.avatar && unit.spells?.length >= 5 && unit.teamId !== me.teamId && !unit.isDead);
+    if (!foe) return 'no foe';
+    foe.takeDamage(99_999, me);
+    return foe.name ?? 'foe';
+  });
+  console.log(`  kill: ${killed}`);
+  await sleep(900);
   await shot('5-tide');
 
   // A shoal, flooded or dry.
@@ -164,5 +238,6 @@ async function run(name, viewport, touch) {
   await browser.close();
 }
 
-if (ONLY !== 'phone') await run('desktop', { width: 1440, height: 900 }, false);
-if (ONLY !== 'desktop') await run('phone', { width: 844, height: 390 }, true);
+if (!ONLY || ONLY === 'desktop') await run('desktop', { width: 1440, height: 900 }, false);
+if (!ONLY || ONLY === 'phone') await run('phone', { width: 844, height: 390 }, true);
+if (!ONLY || ONLY === 'portrait') await run('portrait', { width: 390, height: 844 }, true);

@@ -94,6 +94,15 @@ export const data: ContentPackData = {
     hero('wick', 'Wick', { damage: 10, attacksPerSecond: 1.1, range: 430 }, { health: 100 }, [255, 208, 112]),
     hero('skerry', 'Skerry', { damage: 16, attacksPerSecond: 1.3, range: 150 }, { health: 105 }, [255, 138, 128]),
     hero('gull', 'Gull', { damage: 12, attacksPerSecond: 1.0, range: 520 }, { health: 90 }, [150, 204, 255]),
+    // The D/F shelf: two sea charms every hero may carry. Not a champion.
+    {
+      id: 'charms',
+      name: 'Bùa Biển',
+      image: null,
+      playable: false,
+      summonerShelf: true,
+      spells: ['Charm_Riptide', 'Charm_Lampglass'],
+    },
   ],
   spellDisplay: displayData(),
   maps: [map],

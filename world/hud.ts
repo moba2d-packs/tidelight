@@ -34,9 +34,17 @@ export interface HudState {
 const ROOT_ID = 'tidelight-hud';
 const END_ID = 'tidelight-end';
 const STYLE_ID = 'tidelight-hud-style';
+/**
+ * On `<body>` for as long as this HUD is up. Core's score strip owns the top
+ * 34px and its kill feed starts right under it; the Lantern strip takes the
+ * row between them, so the feed has to start one row lower — but only in a
+ * Tidelight match, which is what this class says. Removed in `destroy`, so
+ * every other map keeps core's own layout.
+ */
+const BODY_CLASS = 'tidelight-on';
 
 const STYLE = `
-#${ROOT_ID}{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 6px);transform:translateX(-50%);
+#${ROOT_ID}{position:fixed;left:50%;top:calc(var(--safe-top,0px) + 39px);transform:translateX(-50%);
   z-index:40;pointer-events:none;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:${css(INK.CREAM)};
   display:flex;flex-direction:row-reverse;align-items:center;gap:8px;white-space:nowrap;user-select:none;-webkit-user-select:none}
 #${ROOT_ID} .tl-strip{display:flex;align-items:center;gap:10px;padding:6px 14px;border-radius:999px;
@@ -58,10 +66,12 @@ const STYLE = `
   letter-spacing:.06em;text-transform:uppercase;background:${css(INK.ABYSS, 0.78)};border:1.5px solid currentColor}
 #${ROOT_ID} .tl-tide.turning{animation:tl-pulse .5s ease-in-out infinite alternate}
 #${ROOT_ID} .tl-tide .tl-clock{font-variant-numeric:tabular-nums;color:${css(INK.CREAM)}}
-#${ROOT_ID} .tl-flash{font-size:15px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px;
-  position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:34px;
-  text-shadow:0 2px 0 ${css(INK.SHADOW)};opacity:0;transition:opacity .3s}
-#${ROOT_ID} .tl-flash.show{opacity:1}
+#${ROOT_ID} .tl-flash{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px;
+  display:none;border-radius:999px;background:${css(INK.ABYSS, 0.82)};border:1.5px solid ${css(INK.LANTERN)};color:${css(INK.LANTERN)}}
+#${ROOT_ID}.flashing .tl-flash{display:block}
+#${ROOT_ID}.flashing .tl-tide{display:none}
+body.${BODY_CLASS} .kill-callouts{top:calc(var(--safe-top,0px) + 76px)}
+body.${BODY_CLASS}.touch-ui .kill-callouts{top:60px}
 #${END_ID}{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;
   background:${css(INK.ABYSS, 0.78)};pointer-events:auto;z-index:60;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:${css(INK.CREAM)}}
 #${END_ID}.show{display:flex}
@@ -72,15 +82,23 @@ const STYLE = `
 #${END_ID} button{font:inherit;font-weight:800;font-size:16px;min-width:132px;min-height:48px;border-radius:14px;
   border:2px solid ${css(INK.CREAM)};background:${css(INK.LANTERN)};color:${css(INK.ABYSS)};cursor:pointer;touch-action:manipulation}
 #${END_ID} button.ghost{background:transparent;color:${css(INK.CREAM)}}
+@media (max-width:520px){
+  #${ROOT_ID}{flex-direction:column;gap:4px;top:calc(var(--safe-top,0px) + 34px)}
+  #${ROOT_ID} .tl-strip{padding:4px 10px;gap:7px}
+  #${ROOT_ID} .tl-track{width:44vw;height:9px}
+  #${ROOT_ID} .tl-light{width:10px;height:12px}
+  #${ROOT_ID} .tl-tide,#${ROOT_ID} .tl-flash{font-size:10px;padding:2px 9px}
+  body.${BODY_CLASS} .kill-callouts,body.${BODY_CLASS}.touch-ui .kill-callouts{top:calc(var(--safe-top,0px) + 88px)}
+}
 @keyframes tl-pulse{from{transform:scale(1)}to{transform:scale(1.08)}}
 @media (max-height:480px){
-  #${ROOT_ID}{gap:5px;top:calc(env(safe-area-inset-top,0px) + 3px)}
+  #${ROOT_ID}{gap:5px;top:calc(var(--safe-top,0px) + 33px)}
   #${ROOT_ID} .tl-strip{padding:4px 10px;gap:7px}
   #${ROOT_ID} .tl-track{width:min(24vw,200px);height:9px}
   #${ROOT_ID} .tl-wide{display:none}
   #${ROOT_ID} .tl-light{width:10px;height:12px}
   #${ROOT_ID} .tl-tide{font-size:10px;padding:2px 9px}
-  #${ROOT_ID} .tl-flash{font-size:12px}
+  #${ROOT_ID} .tl-flash{font-size:10px;padding:2px 9px}
 }
 `;
 
@@ -157,7 +175,11 @@ export class TideHud {
       this.end.classList.remove('show');
     });
 
-    document.body.appendChild(root);
+    // Inside core's game scene when there is one, so this strip shares its
+    // stacking context: core's own overlays (the rotate-your-phone hint, the
+    // scoreboard) then cover it exactly as they cover core's HUD.
+    (document.getElementById('game-scene') ?? document.body).appendChild(root);
+    document.body.classList.add(BODY_CLASS);
     this.root = root;
   }
 
@@ -201,7 +223,7 @@ export class TideHud {
     this.clock.textContent = formatClock(tide.msLeft);
 
     this.flash.textContent = state.flash ?? '';
-    this.flash.classList.toggle('show', state.flash !== null);
+    this.root.classList.toggle('flashing', state.flash !== null);
 
     if (state.winner && !this.dismissed) {
       const won = state.winner === state.playerCourt;
@@ -215,6 +237,7 @@ export class TideHud {
 
   destroy(): void {
     this.root?.remove();
+    if (this.root) document.body.classList.remove(BODY_CLASS);
     this.end?.remove();
     this.root = null;
   }

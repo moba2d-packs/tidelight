@@ -38,4 +38,6 @@ export { default as Gull_Q } from './Gull_Q';
 export { default as Gull_W } from './Gull_W';
 export { default as Gull_E } from './Gull_E';
 export { default as Gull_R } from './Gull_R';
+export { default as Charm_Riptide } from './Charm_Riptide';
+export { default as Charm_Lampglass } from './Charm_Lampglass';
 // moba2d-pack-add spell: new barrel entries go above this line
