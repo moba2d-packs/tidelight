@@ -26,6 +26,8 @@ export default class Wick_Q extends api.Spell {
     const owner = this.owner;
     this.live = fireBolt(owner, this.aimPoint, WICK_Q_RANGE, {
       damage: WICK_Q_DAMAGE,
+      damageType: 'MAGIC',
+      label: this.name,
       speed: 14,
       size: 22,
       tint: INK.LANTERN,

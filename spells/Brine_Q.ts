@@ -28,6 +28,8 @@ export default class Brine_Q extends api.Spell {
     const owner = this.owner;
     this.live = fireBolt(owner, this.aimPoint, BRINE_Q_RANGE, {
       damage: BRINE_Q_DAMAGE,
+      damageType: 'PHYSICAL',
+      label: this.name,
       speed: 15,
       size: 26,
       tint: INK.IRON,

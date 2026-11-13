@@ -51,6 +51,31 @@ export const WARDENS: Record<Court, Pt> = {
   [RED]: { x: MAP_SIZE - 930, y: MAP_SIZE - 1425 },
 };
 
+/**
+ * Keep towers — one per court, against the back of its own dock, between the
+ * fountain and the map edge. A keep guards the
+ * harbour, not the lantern: its reach stops short of the berth (x 700 / 2500),
+ * so a delivery is never a dive and a keep never holds a gate (`heart.ts`
+ * reads only the warden for that).
+ */
+export const KEEPS: Record<Court, Pt> = {
+  [BLUE]: { x: 40, y: RAIL_Y },
+  [RED]: { x: MAP_SIZE - 40, y: RAIL_Y },
+};
+/** Keep numbers. 90–135 HP heroes: two to three shots, one every 0.45 s. */
+export const KEEP_STATS = {
+  health: 2_400,
+  damage: 45,
+  attackInterval: 450,
+  attackRange: 480,
+  size: 120,
+  rebuildTime: 90_000,
+  repairDelay: 6_000,
+  repairRate: 0.5,
+} as const;
+/** How close a turret must stand to a keep point to be that keep. */
+export const KEEP_MATCH_PX = 40;
+
 /** The two tidal shoals: flank routes that flood and drain with the tide. */
 export const SHOAL_NORTH: Box = { x: 620, y: 800, w: 1960, h: 360 };
 export const SHOAL_SOUTH: Box = { x: 620, y: 2040, w: 1960, h: 360 };

@@ -34,7 +34,7 @@ export default class Gull_E extends api.Spell {
       GULL_E_LIFE_MS,
       GULL_E_TICK_MS,
       target => {
-        target.takeDamage(GULL_E_TICK_DAMAGE, owner);
+        target.takeDamage(GULL_E_TICK_DAMAGE, owner, 'MAGIC', this.name);
         slow(owner, target, GULL_E_SLOW, GULL_E_TICK_MS * 1.5, 'gull_e_slow');
       },
       { tint: INK.GALE, glyph: 'storm' }

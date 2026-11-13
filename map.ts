@@ -16,6 +16,9 @@ export const map: MapDefinition = {
   size: MAP_SIZE,
   // Order is the team bridge: [0] is blue (the Tide Court), [1] red (the Ember Court).
   factions: [{ id: FACTION_TIDE }, { id: FACTION_EMBER }],
+  // `world/scenery.ts` paints every wall and kelp bed; core's grey fills under
+  // it were a whole extra layer of overdraw.
+  paintsOwnTerrain: true,
   tuning: {
     champions: { reviveCurve: { base: 5_000, perMinute: 1_500, max: 12_000 } },
     // Wardens neither repair nor rebuild: a gate that has been opened stays

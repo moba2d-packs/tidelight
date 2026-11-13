@@ -24,6 +24,8 @@ export default class Nacre_Q extends api.Spell {
     const piercing = tideIsWith(this.owner);
     this.live = fireBolt(this.owner, this.aimPoint, NACRE_Q_RANGE, {
       damage: NACRE_Q_DAMAGE,
+      damageType: 'PHYSICAL',
+      label: this.name,
       speed: 14,
       size: piercing ? 28 : 22,
       maxHitCount: piercing ? Infinity : 1,

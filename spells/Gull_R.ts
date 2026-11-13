@@ -28,7 +28,7 @@ export default class Gull_R extends api.Spell {
     const court = courtOf(owner);
     if (court) heartOf(owner)?.overrideTide(court, GULL_R_TIDE_MS);
     for (const enemy of enemiesAt(owner, owner.position, GULL_R_RADIUS)) {
-      enemy.takeDamage(GULL_R_DAMAGE, owner);
+      enemy.takeDamage(GULL_R_DAMAGE, owner, 'MAGIC', this.name);
     }
     burst(owner, owner.position, GULL_R_RADIUS, INK.GALE, 'ring', 700);
   }

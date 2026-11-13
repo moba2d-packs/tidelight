@@ -26,6 +26,8 @@ export default class Gull_Q extends api.Spell {
     const owner = this.owner;
     this.live = fireBolt(owner, this.aimPoint, GULL_Q_RANGE, {
       damage: GULL_Q_DAMAGE,
+      damageType: 'MAGIC',
+      label: this.name,
       speed: 16,
       size: 24,
       tint: INK.GALE,

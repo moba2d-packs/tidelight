@@ -7,6 +7,8 @@ import {
   FACTION_TIDE,
   HEART_ROLE,
   ISLANDS,
+  KEEP_STATS,
+  KEEPS,
   KELP,
   MAP_SIZE,
   RAIL_Y,
@@ -44,6 +46,9 @@ export const geometry: MapGeometry = {
     structure: [
       { faction: FACTION_TIDE, kind: 'turret', x: WARDENS[BLUE].x, y: WARDENS[BLUE].y },
       { faction: FACTION_EMBER, kind: 'turret', x: WARDENS[RED].x, y: WARDENS[RED].y },
+      // Keeps: the harbour's own guns, stronger than any warden (`layout.ts`).
+      { faction: FACTION_TIDE, kind: 'turret', x: KEEPS[BLUE].x, y: KEEPS[BLUE].y, stats: { ...KEEP_STATS } },
+      { faction: FACTION_EMBER, kind: 'turret', x: KEEPS[RED].x, y: KEEPS[RED].y, stats: { ...KEEP_STATS } },
     ],
     neutral: [{ role: HEART_ROLE, kind: 'object', x: CENTER.x, y: CENTER.y, r: 60 }],
   },

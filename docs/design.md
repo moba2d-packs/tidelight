@@ -16,7 +16,7 @@ first to 2 Lights, capped at 6 minutes**; a typical one is meant to take 4–6.
 
 ## 2. The signature mechanic: the tide carries the Lantern
 
-Three rules, all visible on screen at once.
+Four rules, all visible on screen at once.
 
 1. **The Lantern moves for whoever outnumbers the other around it.** Stand
    within 270 units and you escort it. Net escort 1 / 2 / 3+ moves it at
@@ -38,6 +38,10 @@ Three rules, all visible on screen at once.
    enemy gate while that Warden stands. Kill the Warden — or simply **hold the
    Lantern against the gate**: its light burns the Warden for 18 damage per
    second while an escort keeps it there. Pushing *is* the siege.
+4. **Each harbour is guarded by a Keep.** A keep stands behind its court's
+   fountain: 2400 HP, 45 damage every 0.45 s, 480 reach, back 90 s after it
+   falls. It guards the harbour, never the lantern — its reach stops short of
+   the berth, and it is not a warden, so it never holds a gate shut.
 
 Deliver the Lantern to the dock: one Light, the Lantern relights in the middle
 after 4 s. Two Lights win. At the 6-minute cap the court with more Lights wins,
@@ -78,11 +82,17 @@ All ultimates are on a 10 s cooldown — short matches, lots of plays.
 
 | Hero | Role | Passive | Q | W | E | R |
 |---|---|---|---|---|---|---|
-| **Brine** — the ballast | Anchor, melee, 135 HP | *Đá Dằn*: counts as 2 escorts | *Neo Móc*: hook, pull 190, 18 dmg, slow | *Dằn Thuyền*: shield 26 (42 beside the Lantern) | *Sóng Xô*: dash-slam, 20 dmg, slow | *Thả Neo*: 42 dmg, root 1.4 s, **anchors the Lantern for 5 s** (enemy escort and current ignored) |
-| **Nacre** — the pearl diver | Poke, ranged, 90 HP | *Mắt Ngọc*: pearls are worth double | *Ngọc Bắn*: 24 dmg bolt, pierces when the tide is with her | *Bong Bóng*: bubble that roots | *Lặn Sâu*: dive-dash + haste | *Trăng Ngọc*: 40 dmg burst that leaves a slowing pool |
-| **Wick** — the lamplighter | Support, ranged, 100 HP | *Người Giữ Đèn*: regenerates beside the Lantern | *Tia Lửa*: 18 dmg, heals an ally nearby for 12 | *Thắp Lại*: heal 16 + haste | *Chói Loà*: silence + slow flash | *Lửa Mặt Trời*: 40 dmg and **kicks the Lantern 150 units** forward |
-| **Skerry** — the reef runner | Skirmisher, melee, 105 HP | *Con Nước*: +15% speed while the tide is hers | *Lưỡi Sò*: 22 dmg sweep | *Lướt Nước*: +45% speed burst | *Xoáy Ngầm*: dash through, 20 dmg | *Phá Rạn*: leap, 48 dmg, stun |
-| **Gull** — the stormcaller | Control, ranged, 90 HP | *Đổi Gió*: heals 10 whenever the tide turns | *Gió Giật*: 20 dmg gust, slow | *Gió Xuôi*: team haste | *Vùng Bão*: storm zone, damage over time + slow | *Gọi Triều*: 30 dmg and **turns the tide to her court for 8 s** (the tide then cannot be called again for 20 s) |
+| **Brine** — the ballast | Tank, melee, physical. 165 HP, armor 45, MR 35 | *Đá Dằn*: counts as 2 escorts | *Neo Móc*: hook, pull 190, 18 dmg, slow | *Dằn Thuyền*: shield 26 (42 beside the Lantern) | *Sóng Xô*: dash-slam, 20 dmg, slow | *Thả Neo*: 42 dmg, root 1.4 s, **anchors the Lantern for 5 s** (enemy escort and current ignored) |
+| **Nacre** — the pearl diver | AD marksman, ranged, physical. 85 HP, armor 5, MR 0, hits 14 at 1.2/s | *Mắt Ngọc*: pearls are worth double | *Ngọc Bắn*: 24 dmg bolt, pierces when the tide is with her | *Bong Bóng*: bubble that roots | *Lặn Sâu*: dive-dash + haste | *Trăng Ngọc*: 40 dmg burst that leaves a slowing pool |
+| **Wick** — the lamplighter | Support, ranged, **magic** damage, heals and shields. 100 HP, armor 8, MR 22 | *Người Giữ Đèn*: regenerates beside the Lantern | *Tia Lửa*: 18 dmg, heals an ally nearby for 12 | *Thắp Lại*: heal 16 + haste | *Chói Loà*: silence + slow flash | *Lửa Mặt Trời*: 40 dmg and **kicks the Lantern 150 units** forward |
+| **Skerry** — the reef runner | AD skirmisher, melee, physical. 105 HP, armor 15, MR 10 | *Con Nước*: +15% speed while the tide is hers | *Lưỡi Sò*: 22 dmg sweep | *Lướt Nước*: +45% speed burst | *Xoáy Ngầm*: dash through, 20 dmg | *Phá Rạn*: leap, 48 dmg, stun |
+| **Gull** — the stormcaller | AP mage / control, ranged, **magic**. 90 HP, armor 0, MR 15 | *Đổi Gió*: heals 10 whenever the tide turns | *Gió Giật*: 20 dmg gust, slow | *Gió Xuôi*: team haste | *Vùng Bão*: storm zone, damage over time + slow | *Gọi Triều*: 30 dmg and **turns the tide to her court for 8 s** (the tide then cannot be called again for 20 s) |
+
+Every ability hit is labelled `takeDamage(amount, owner, type, 'Tên Chiêu')`
+(Brine, Skerry, Nacre: `PHYSICAL`; Wick, Gull: `MAGIC`), so the death recap
+names the spell and armor/magic resist apply by role. `tests/damageLabels.test.ts`
+scans `spells/` and `world/fx.ts` and fails on any unlabelled call. Body
+stats are the `TANK`/`MARKSMAN`/... constants in `pack.ts`.
 
 Numbers live as exported constants at the top of each spell file.
 
@@ -134,6 +144,17 @@ without looking at the minimap.
 - `spells/` — 25 abilities. `map.ts`, `geometry.ts`, `pack.ts` — the data half.
 - `scripts/game.mjs` — runs core with *only this pack* by answering core's
   generated pack list from memory; core's files are not modified.
+
+## 7b. The reef art kit (`world/art/`)
+
+Painting a map from a description instead of hand-drawing it. Walls stay the gameplay truth (`geometry.terrain.wall`); the art follows the same polygons, so it never shows a wall where there is none and never hides one.
+
+- `world/art/reef.ts`: `ReefDescription { size, tint?, styles?, sea, rocks, kelp, floor?, bakeFloor?, bake?, live? }`. `wallsOf(desc)` = `sea` + every rock part: feed the geometry from it. `ReefLayer.paint(ctx, view, scale, ms)` bakes still art into tiles and draws live art (kelp sway, glints) on top.
+- `world/art/shapes.ts`: `hull`, `blob`, `arc`, `ribbon`, `mirror`/`flipX`/`flipY`, `isConvex`, `distToPoly`, `convexOverlap`. Core collides convex polygons only, so organic shapes are chains or hulls of convex pieces.
+- `world/art/tiles.ts` + `draw.ts`: the shared tile cache (512px world tiles, baked at camera scale, 1:1 whole-pixel blit, settle frames, memory cap) and drawing primitives. Driftglass stays on its own painter (`world/scenery.ts`) but runs on this same `TileCache` and primitives, so its look and cost are unchanged.
+- `world/art/sceneryObject.ts`: `ensureArt(game, mapId, size, describe)`, idempotent per game. Call it from both the map's `ensure()` and its slot object so the art exists with the jungle on or off. Check the map with `maps/onMap.ts` (the id is qualified, e.g. `tidelight:maze`).
+
+Recipe for a map: (1) `layout.ts` pure data: `*_SEA` frame rects, `*_ROCKS: RockSpec[]` (`parts`, `style`, `detail`, `lift`), `*_KELP` polys; (2) `geometry.ts` uses `terrain: { wall: wallsOf-equivalent, bush: KELP }`; (3) `art.ts` returns the description plus `floor` patches (sand, channel, pool, mud) and optional `bakeFloor`/`bake`/`live` hooks for set pieces; (4) `map.ts` sets `paintsOwnTerrain: true`; (5) tests: convexity, symmetry, 28px hero clearance by BFS, and `tests/reefArt.test.ts`-style checks that art equals geometry. Raw `drawingContext` use goes inside `save()`/`restore()`. Examples: `maps/maze` (shipwreck graveyard), `maps/duel` (clam amphitheatre).
 
 ## 8. Sea charms (D / F)
 

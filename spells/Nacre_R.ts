@@ -29,7 +29,7 @@ export default class Nacre_R extends api.Spell {
     const owner = this.owner;
     const point = aimWithin(owner, this.aimPoint, NACRE_R_RANGE);
     for (const enemy of enemiesAt(owner, point, NACRE_R_RADIUS)) {
-      enemy.takeDamage(NACRE_R_DAMAGE, owner);
+      enemy.takeDamage(NACRE_R_DAMAGE, owner, 'PHYSICAL', this.name);
     }
     burst(owner, point, NACRE_R_RADIUS, INK.PEARL, 'crater', 700);
     this.pool = layZone(
@@ -39,7 +39,7 @@ export default class Nacre_R extends api.Spell {
       NACRE_R_POOL_MS,
       NACRE_R_TICK_MS,
       target => {
-        target.takeDamage(NACRE_R_TICK_DAMAGE, owner);
+        target.takeDamage(NACRE_R_TICK_DAMAGE, owner, 'PHYSICAL', this.name);
         slow(owner, target, NACRE_R_SLOW, NACRE_R_TICK_MS * 1.5, 'nacre_r_slow');
       },
       { tint: INK.PEARL, glyph: 'pool' }

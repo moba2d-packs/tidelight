@@ -1,9 +1,16 @@
-import type { AttackableUnit, CastSpec } from '@moba2d/core/content/types';
+import type { AttackableUnit, CastSpec, DamageType } from '@moba2d/core/content/types';
 import { api } from '../packApi';
+import { ensurePitch } from '../maps/ball/pitch';
+import { ensureDefence } from '../maps/defend/defence';
 import { ensureHeart, getHeart, tideTraits, type Heart, type TideTraits } from './heart';
 import { BLUE, RED, type Court } from './layout';
 import { INK, courtColor, type Rgb } from './palette';
 import { ESCORT_RADIUS } from './rules';
+import { ensureOn } from '../maps/onMap';
+import { HILL_MAP_ID } from '../maps/hill/layout';
+import { createHill } from '../maps/hill/hill';
+import { createPortalArena } from '../maps/portals/arena';
+import { createBridgeArena } from '../maps/bridge/arena';
 
 /**
  * What the twenty-five spell files share: targeting helpers, the two status
@@ -108,6 +115,9 @@ export class PaperBolt extends api.MissileSpellObject {
   speed = 13;
   size = 22;
   damage = 20;
+  /** Which resistance the hit meets, and the name the death recap shows. Set by every caster. */
+  damageType: DamageType = 'PHYSICAL';
+  label = '';
   maxHitCount = 1;
   tint: Rgb = INK.CREAM;
   shape: BoltShape = 'pearl';
@@ -116,7 +126,7 @@ export class PaperBolt extends api.MissileSpellObject {
   private origin = { x: this.position.x, y: this.position.y };
 
   onHit(target: AttackableUnit): void {
-    target.takeDamage(this.damage, this.owner);
+    target.takeDamage(this.damage, this.owner, this.damageType, this.label);
     this.afterHit?.(target);
     const pulse = new api.AoePulse(this.owner);
     pulse.position = createVector(target.position.x, target.position.y);
@@ -189,7 +199,7 @@ export function fireBolt(
   owner: AttackableUnit,
   aim: Vec,
   range: number,
-  setup: Partial<Pick<PaperBolt, 'speed' | 'size' | 'damage' | 'maxHitCount' | 'tint' | 'shape' | 'afterHit'>>
+  setup: Partial<Pick<PaperBolt, 'speed' | 'size' | 'damage' | 'damageType' | 'label' | 'maxHitCount' | 'tint' | 'shape' | 'afterHit'>>
 ): PaperBolt {
   const bolt = new PaperBolt(owner);
   Object.assign(bolt, setup);
@@ -372,6 +382,11 @@ export abstract class TidePassive extends api.Spell {
 
   onSpellCast(): void {
     ensureHeart(this.game);
+    ensurePitch(this.game);
+    ensureDefence(this.game);
+    ensureOn(this.game, HILL_MAP_ID, createHill);
+    ensureOn(this.game, 'portals', createPortalArena);
+    ensureOn(this.game, 'bridge', createBridgeArena);
     tideTraits.set(this.owner, this.traits);
     const mark = new TideMark(0, this.owner, this.owner);
     mark.stackId = `tidelight-mark-${this.ornament}`;

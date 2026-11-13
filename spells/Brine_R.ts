@@ -31,7 +31,7 @@ export default class Brine_R extends api.Spell {
     const owner = this.owner;
     const point = aimWithin(owner, this.aimPoint, BRINE_R_RANGE);
     for (const enemy of enemiesAt(owner, point, BRINE_R_RADIUS)) {
-      enemy.takeDamage(BRINE_R_DAMAGE, owner);
+      enemy.takeDamage(BRINE_R_DAMAGE, owner, 'PHYSICAL', this.name);
       enemy.addBuff(new api.buffs.Root(BRINE_R_ROOT_MS, owner, enemy));
     }
     burst(owner, point, BRINE_R_RADIUS, INK.IRON, 'crater', 700);

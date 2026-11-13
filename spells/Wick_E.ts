@@ -26,7 +26,7 @@ export default class Wick_E extends api.Spell {
     const owner = this.owner;
     const point = aimWithin(owner, this.aimPoint, WICK_E_RANGE);
     for (const enemy of enemiesAt(owner, point, WICK_E_RADIUS)) {
-      enemy.takeDamage(WICK_E_DAMAGE, owner);
+      enemy.takeDamage(WICK_E_DAMAGE, owner, 'MAGIC', this.name);
       enemy.addBuff(new api.buffs.Silence(WICK_E_SILENCE_MS, owner, enemy));
       slow(owner, enemy, WICK_E_SLOW, WICK_E_SLOW_MS, 'wick_e_slow');
     }

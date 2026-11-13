@@ -34,7 +34,7 @@ export default class Skerry_E extends api.Spell {
     dash.dashSpeed = 22;
     dash.onReachedDestination = () => {
       for (const enemy of enemiesAt(owner, owner.position, SKERRY_E_RADIUS)) {
-        enemy.takeDamage(SKERRY_E_DAMAGE, owner);
+        enemy.takeDamage(SKERRY_E_DAMAGE, owner, 'PHYSICAL', this.name);
         slow(owner, enemy, SKERRY_E_SLOW, SKERRY_E_SLOW_MS, 'skerry_e_slow');
       }
       burst(owner, owner.position, SKERRY_E_RADIUS, INK.CORAL, 'splash', 380);

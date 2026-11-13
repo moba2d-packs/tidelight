@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTestApi, createGame, indexObjects, stubGameGlobals, type TestGame } from '@moba2d/core/testing';
-import { BLUE, CENTER, GATE_S, RAIL_HALF, RED } from '../world/layout';
+import { BLUE, CENTER, GATE_S, KEEPS, RAIL_HALF, RED, WARDENS } from '../world/layout';
 import { LIGHTS_TO_WIN, SLACK_MS } from '../world/rules';
 import { createHeart, getHeart, tideTraits, type Heart } from '../world/heart';
 
@@ -78,6 +78,23 @@ describe('the Heart of the reef', () => {
     (game as any).turrets = [{ teamId: RED, isDead: true }];
     heart.kick(BLUE, 100);
     expect(heart.lanternS).toBe(GATE_S + 100);
+  });
+
+  it('opens the gate when the warden falls, whatever the keep at home is doing', () => {
+    const keep = { teamId: RED, isDead: false, position: { ...KEEPS[RED] } };
+    (game as any).turrets = [keep, { teamId: RED, isDead: true, position: { ...WARDENS[RED] } }];
+    heart.kick(BLUE, GATE_S + 200);
+    expect(heart.lanternS).toBe(GATE_S + 200);
+  });
+
+  it('burns the warden under the lantern, never the keep', () => {
+    const keep = { teamId: RED, isDead: false, health: 2400, position: { ...KEEPS[RED] }, takeDamage(n: number) { this.health -= n; } };
+    const warden = { teamId: RED, isDead: false, health: 320, position: { ...WARDENS[RED] }, takeDamage(n: number) { this.health -= n; } };
+    (game as any).turrets = [keep, warden];
+    heart.kick(BLUE, GATE_S);
+    run(2_000, [hero(BLUE, GATE_S)]);
+    expect(keep.health).toBe(2400);
+    expect(warden.health).toBeLessThan(320);
   });
 
   it('burns a warden down while an escort holds the lantern on its gate', () => {

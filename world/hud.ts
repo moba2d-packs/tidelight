@@ -167,7 +167,12 @@ export class TideHud {
     const buttons = el('div', 'tl-buttons', this.end);
     const again = el('button', '', buttons, 'Trận mới');
     again.id = 'tidelight-rematch';
-    again.addEventListener('click', () => this.onRematch());
+    // Gone before the restart, not after: core does not remove this match's
+    // objects when it builds the next, and a card left up eats every click.
+    again.addEventListener('click', () => {
+      this.destroy();
+      this.onRematch();
+    });
     const stay = el('button', 'ghost', buttons, 'Xem tiếp');
     stay.id = 'tidelight-dismiss';
     stay.addEventListener('click', () => {

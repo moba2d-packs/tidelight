@@ -26,7 +26,7 @@ export default class Wick_R extends api.Spell {
   onSpellCast(): void {
     const owner = this.owner;
     for (const enemy of enemiesAt(owner, owner.position, WICK_R_RADIUS)) {
-      enemy.takeDamage(WICK_R_DAMAGE, owner);
+      enemy.takeDamage(WICK_R_DAMAGE, owner, 'MAGIC', this.name);
     }
     burst(owner, owner.position, WICK_R_RADIUS, INK.LANTERN, 'flame', 700);
 

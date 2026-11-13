@@ -34,7 +34,7 @@ export default class Brine_E extends api.Spell {
     dash.dashSpeed = 17;
     dash.onReachedDestination = () => {
       for (const enemy of enemiesAt(owner, owner.position, BRINE_E_RADIUS)) {
-        enemy.takeDamage(BRINE_E_DAMAGE, owner);
+        enemy.takeDamage(BRINE_E_DAMAGE, owner, 'PHYSICAL', this.name);
         slow(owner, enemy, BRINE_E_SLOW, BRINE_E_SLOW_MS, 'brine_e_slow');
       }
       burst(owner, owner.position, BRINE_E_RADIUS, INK.IRON, 'stomp', 460);

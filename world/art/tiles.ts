@@ -1,0 +1,150 @@
+import type { Box } from '../layout';
+import type { Ctx, View } from './draw';
+
+/**
+ * The tile cache every painted map shares: the still half of a map baked once
+ * per world tile into an offscreen canvas at the camera's scale, then blitted.
+ *
+ * Moved out of `scenery.ts` unchanged in behaviour (Driftglass still runs on it):
+ *
+ * - tiles are keyed on the *world* grid and the zoom level, never on the camera
+ *   (core's `FogOfWar.performance.test.ts`: a camera-keyed cache misses on every
+ *   step the player takes);
+ * - a tile is painted at the camera's own scale, so the blit is a 1:1 copy at a
+ *   whole-pixel offset — the fast path. A scaled `drawImage` filters every pixel
+ *   and on a software-rasterised canvas that filter *is* the frame;
+ * - a zoom change waits `SETTLE_FRAMES` before repainting, and repaints at most
+ *   two visible tiles a frame;
+ * - `MAX_PIXELS` bounds the memory, and only tiles not drawn this frame go.
+ */
+
+/** World units per tile edge. 512 at zoom 1 is a 1 MB canvas. */
+export const TILE = 512;
+/** Seam guard: each tile is painted this many pixels past its edge, and overlaps its neighbour by it. */
+const BLEED_PX = 2;
+/** Above this the tiles stop growing and scale up. */
+export const MAX_LEVEL = 2;
+/** Frames the zoom must hold still before tiles are repainted at it — a pinch is not a zoom level. */
+export const SETTLE_FRAMES = 12;
+/** Canvas pixels held at once, ~64 MB. */
+const MAX_PIXELS = 16_000_000;
+/** Off-screen tiles painted ahead of the camera per frame, so walking rarely waits on one. */
+const PREFETCH_PER_FRAME = 1;
+
+interface Tile {
+  canvas: HTMLCanvasElement;
+  level: number;
+  /** World units the canvas covers past the tile's edge on each side. */
+  bleed: number;
+  usedAt: number;
+}
+
+/** Paints everything that never moves, for one world tile. `ctx` is already in world space. */
+export type TileBaker = (ctx: Ctx, tile: Box) => void;
+
+export class TileCache {
+  private readonly tiles = new Map<number, Tile>();
+  private readonly perRow: number;
+  private frame = 0;
+  private level = 0;
+  private lastScale = 0;
+  private stillFor = 0;
+  /** Paints done, for tests and the measurement harness. */
+  bakes = 0;
+
+  constructor(
+    mapSize: number,
+    private readonly bakeTile: TileBaker
+  ) {
+    this.perRow = Math.ceil(mapSize / TILE);
+  }
+
+  private bake(tx: number, ty: number, level: number): Tile {
+    const old = this.tiles.get(ty * this.perRow + tx);
+    const canvas = old?.canvas ?? document.createElement('canvas');
+    const bleed = BLEED_PX / level;
+    const px = Math.ceil((TILE + bleed * 2) * level);
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext('2d')!;
+    const box = { x: tx * TILE, y: ty * TILE, w: TILE, h: TILE };
+    ctx.setTransform(level, 0, 0, level, (bleed - box.x) * level, (bleed - box.y) * level);
+    this.bakeTile(ctx, box);
+    const tile = { canvas, level, bleed, usedAt: this.frame };
+    this.tiles.set(ty * this.perRow + tx, tile);
+    this.bakes++;
+    return tile;
+  }
+
+  private evict(): void {
+    let pixels = 0;
+    for (const tile of this.tiles.values()) pixels += tile.canvas.width * tile.canvas.height;
+    if (pixels <= MAX_PIXELS) return;
+    const idle = [...this.tiles.entries()].filter(([, t]) => t.usedAt < this.frame).sort((a, b) => a[1].usedAt - b[1].usedAt);
+    for (const [key, tile] of idle) {
+      if (pixels <= MAX_PIXELS) break;
+      pixels -= tile.canvas.width * tile.canvas.height;
+      tile.canvas.width = 0; // let the backing store go now, not at GC
+      this.tiles.delete(key);
+    }
+  }
+
+  get size(): number {
+    return this.tiles.size;
+  }
+
+  /** Blit the still half of the map for `view`, painting what is missing. */
+  draw(ctx: Ctx, view: View, scale: number): void {
+    const perRow = this.perRow;
+    this.frame++;
+    this.stillFor = scale === this.lastScale ? this.stillFor + 1 : 0;
+    this.lastScale = scale;
+    const wanted = Math.min(MAX_LEVEL, scale);
+    if (this.level === 0 || (this.stillFor >= SETTLE_FRAMES && this.level !== wanted)) this.level = wanted;
+    const level = this.level;
+    // The camera's transform, for snapping a 1:1 tile to whole pixels.
+    const m = ctx.getTransform();
+    const square = m.b === 0 && m.c === 0 && m.a === m.d;
+    const tx0 = Math.max(0, Math.floor(view.x / TILE));
+    const ty0 = Math.max(0, Math.floor(view.y / TILE));
+    const tx1 = Math.min(perRow - 1, Math.floor((view.x + view.w) / TILE));
+    const ty1 = Math.min(perRow - 1, Math.floor((view.y + view.h) / TILE));
+    // A zoom change repaints at most this many visible tiles a frame; the rest
+    // are blitted at their old level (a touch soft) until their turn comes.
+    let rezoom = 2;
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        let tile = this.tiles.get(ty * perRow + tx);
+        if (!tile) tile = this.bake(tx, ty, level);
+        else if (tile.level !== level && rezoom-- > 0) tile = this.bake(tx, ty, level);
+        tile.usedAt = this.frame;
+        const wx = tx * TILE - tile.bleed;
+        const wy = ty * TILE - tile.bleed;
+        if (square && tile.level === m.a) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(tile.canvas, Math.round(m.a * wx + m.e), Math.round(m.d * wy + m.f));
+          ctx.setTransform(m);
+        } else {
+          const size = tile.canvas.width / tile.level;
+          ctx.drawImage(tile.canvas, wx, wy, size, size);
+        }
+      }
+    }
+    // Walk-ahead: the ring one tile outside the view.
+    let budget = PREFETCH_PER_FRAME;
+    for (let ty = ty0 - 1; ty <= ty1 + 1 && budget > 0; ty++) {
+      for (let tx = tx0 - 1; tx <= tx1 + 1 && budget > 0; tx++) {
+        if (tx < 0 || ty < 0 || tx >= perRow || ty >= perRow) continue;
+        if (this.tiles.has(ty * perRow + tx)) continue;
+        this.bake(tx, ty, level).usedAt = this.frame;
+        budget--;
+      }
+    }
+    this.evict();
+  }
+
+  dispose(): void {
+    for (const tile of this.tiles.values()) tile.canvas.width = 0;
+    this.tiles.clear();
+  }
+}

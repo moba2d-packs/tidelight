@@ -21,7 +21,7 @@ export default class Skerry_Q extends api.Spell {
   onSpellCast(): void {
     const owner = this.owner;
     for (const enemy of enemiesAt(owner, owner.position, SKERRY_Q_RADIUS)) {
-      enemy.takeDamage(SKERRY_Q_DAMAGE, owner);
+      enemy.takeDamage(SKERRY_Q_DAMAGE, owner, 'PHYSICAL', this.name);
     }
     burst(owner, owner.position, SKERRY_Q_RADIUS, INK.CORAL, 'blades', 380);
   }

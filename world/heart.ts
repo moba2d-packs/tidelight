@@ -7,6 +7,8 @@ import {
   CENTER,
   GATE_S,
   HEART_ROLE,
+  KEEPS,
+  KEEP_MATCH_PX,
   MAP_SIZE,
   PEARL_BEDS_NORTH,
   PEARL_BEDS_SOUTH,
@@ -36,7 +38,9 @@ import {
   type TideOverride,
   type TideState,
 } from './rules';
-import { paintReef } from './scenery';
+import { paintReef, ReefTiles } from './scenery';
+import { ensureMapObject } from '../maps';
+import { onMap } from '../maps/onMap';
 
 /**
  * The Heart — the one object that makes a match on Driftglass Reef a match.
@@ -94,6 +98,20 @@ export const getHeart = (game: unknown): Heart | null =>
 const courtOf = (teamId: string | undefined): Court | null =>
   teamId === BLUE ? BLUE : teamId === RED ? RED : null;
 
+/**
+ * A court's wardens: its turrets that are not its keep. Only a warden locks a
+ * gate or burns under the lantern — a keep standing at home must never hold
+ * the lantern at a gate 600 units away.
+ */
+export function wardensOf(turrets: any[] | undefined, court: Court): any[] {
+  const keep = KEEPS[court];
+  return (turrets ?? []).filter(turret => {
+    if (turret.teamId !== court) return false;
+    const at = turret.position;
+    return !at || Math.hypot(at.x - keep.x, at.y - keep.y) > KEEP_MATCH_PX;
+  });
+}
+
 interface Pearl {
   at: Pt;
   shoal: 'north' | 'south';
@@ -113,16 +131,27 @@ function build() {
     ) {
       super({ game, position: createVector(CENTER.x, CENTER.y) });
     }
+    private readonly tiles = new ReefTiles();
     draw(): void {
-      const cam = (this.game as any).camera?.getBoundingBox?.();
+      const camera = (this.game as any).camera;
+      const cam = camera?.getBoundingBox?.();
       const view = cam ?? { x: 0, y: 0, w: MAP_SIZE, h: MAP_SIZE };
-      paintReef(view, {
+      const state = {
         timeMs: this.heart.clockMs,
         tide: this.heart.tide(),
         score: this.heart.score,
         gateShut: { [BLUE]: this.heart.gateShut(BLUE), [RED]: this.heart.gateShut(RED) },
-      });
+      };
+      paintReef(drawingContext as CanvasRenderingContext2D, this.tiles, view, camera?.currentScale ?? 1, state);
       this.heart.drawPearls();
+    }
+    /** Core's restart/exit does not remove objects one by one: let go of the DOM here too. */
+    onMatchTeardown(): void {
+      this.onRemoved();
+    }
+
+    onRemoved(): void {
+      this.tiles.dispose();
     }
     getDisplayBoundingBox() {
       return this.squareDisplayBoundingBox(MAP_SIZE * 2);
@@ -192,8 +221,7 @@ function build() {
     }
 
     gateShut(court: Court): boolean {
-      const turrets: any[] = (this.game as any).turrets ?? [];
-      return turrets.some(turret => turret.teamId === court && !turret.isDead);
+      return wardensOf((this.game as any).turrets, court).some(turret => !turret.isDead);
     }
 
     kick(court: Court, distance: number): void {
@@ -233,8 +261,7 @@ function build() {
 
     /** The lantern, held against a shut gate, burns through that gate's warden. */
     private burnWarden(court: Court, dtMs: number): void {
-      const turrets: any[] = this.world.turrets ?? [];
-      const warden = turrets.find(turret => turret.teamId === court && !turret.isDead);
+      const warden = wardensOf(this.world.turrets, court).find(turret => !turret.isDead);
       if (!warden || typeof warden.takeDamage !== 'function') return;
       const at = this.lanternPos;
       const pusher = this.unitsNear(at, ESCORT_RADIUS).find(
@@ -412,6 +439,11 @@ function build() {
       }
     }
 
+    /** Core's restart/exit does not remove objects one by one: let go of the DOM here too. */
+    onMatchTeardown(): void {
+      this.onRemoved();
+    }
+
     onRemoved(): void {
       this.hud.destroy();
       this.scenery.toRemove = true;
@@ -451,15 +483,22 @@ function build() {
       noStroke();
       fill(INK.LANTERN[0], INK.LANTERN[1], INK.LANTERN[2], relighting ? 10 : 22);
       circle(at.x, at.y, ESCORT_RADIUS * 2);
-      noFill();
-      stroke(lead[0], lead[1], lead[2], 170);
-      strokeWeight(4);
+      // The ring's dashes: one path and one stroke, not 36 p5 arcs.
+      const ctx = drawingContext as CanvasRenderingContext2D;
+      ctx.save();
+      ctx.strokeStyle = `rgba(${lead[0]},${lead[1]},${lead[2]},${170 / 255})`;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
       const dashes = 36;
       const spin = t * 0.25 * (pushDir || 1);
       for (let i = 0; i < dashes; i++) {
         const a0 = spin + (i / dashes) * Math.PI * 2;
-        arc(at.x, at.y, ESCORT_RADIUS * 2, ESCORT_RADIUS * 2, a0, a0 + (Math.PI * 2) / dashes / 2);
+        ctx.moveTo(at.x + Math.cos(a0) * ESCORT_RADIUS, at.y + Math.sin(a0) * ESCORT_RADIUS);
+        ctx.arc(at.x, at.y, ESCORT_RADIUS, a0, a0 + Math.PI / dashes);
       }
+      ctx.stroke();
+      ctx.restore();
 
       // Escort pips: one row per court, either side of the lantern.
       noStroke();
@@ -556,10 +595,11 @@ export function createHeart(game: any, x = CENTER.x, y = CENTER.y) {
  * call this; on any other map it does nothing.
  */
 export function ensureHeart(game: any): Heart | null {
+  if (ensureMapObject(game)) return null;
   const existing = hearts.get(game);
   if (existing) return existing;
   const slots: any[] = game?.neutralSlots ?? [];
-  const onReef = slots.some(slot => slot?.role === HEART_ROLE) || game?.activeMapId === 'driftglass';
+  const onReef = slots.some(slot => slot?.role === HEART_ROLE) || onMap(game, 'driftglass');
   if (!onReef) return null;
   const heart = createHeart(game);
   game.objectManager.addObject(heart);

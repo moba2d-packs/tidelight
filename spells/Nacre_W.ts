@@ -24,7 +24,7 @@ export default class Nacre_W extends api.Spell {
     const owner = this.owner;
     const point = aimWithin(owner, this.aimPoint, NACRE_W_RANGE);
     for (const enemy of enemiesAt(owner, point, NACRE_W_RADIUS)) {
-      enemy.takeDamage(NACRE_W_DAMAGE, owner);
+      enemy.takeDamage(NACRE_W_DAMAGE, owner, 'PHYSICAL', this.name);
       enemy.addBuff(new api.buffs.Root(NACRE_W_ROOT_MS, owner, enemy));
     }
     burst(owner, point, NACRE_W_RADIUS, INK.PEARL, 'splash', 520);

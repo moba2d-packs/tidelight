@@ -12,6 +12,23 @@ import { setPackApi } from './packApi';
 import { spellCatalog } from './generated/spellCatalog';
 import { spellModules } from './generated/spellModules';
 import { map } from './map';
+import { extraMaps, extraSlotObjects } from './maps';
+import { hillMap } from './maps/hill/map';
+import { createHill } from './maps/hill/hill';
+import { HILL_ROLE } from './maps/hill/layout';
+import { ballMap } from './maps/ball/map';
+import { createPitch } from './maps/ball/pitch';
+import { BALL_ROLE } from './maps/ball/layout';
+import { defendAI } from './maps/defend/defendAI';
+import { createDefence } from './maps/defend/defence';
+import { DEFEND_ROLE } from './maps/defend/layout';
+import { defendMap } from './maps/defend/map';
+import { bridgeMap } from './maps/bridge';
+import { createBridgeArena } from './maps/bridge/arena';
+import { BRIDGE_ROLE } from './maps/bridge/layout';
+import { portalsMap } from './maps/portals';
+import { createPortalArena } from './maps/portals/arena';
+import { PORTALS_ROLE } from './maps/portals/layout';
 import { createHeart } from './world/heart';
 import { HEART_ROLE } from './world/layout';
 
@@ -81,6 +98,13 @@ const hero = (
   trail: { widths: [0.62, 0.5, 0.38, 0.26, 0.14], spacing: 0.55, color: tint, glow: 0.4 },
 });
 
+/** Durability per role. Armor/MR use core's curve: 100 / (100 + r), so 45 armor takes ~69% of a physical hit. */
+export const TANK: ChampionDefence = { health: 165, armor: 45, magicResist: 35 };
+export const SKIRMISHER: ChampionDefence = { health: 105, armor: 15, magicResist: 10 };
+export const MARKSMAN: ChampionDefence = { health: 85, armor: 5, magicResist: 0 };
+export const SUPPORT: ChampionDefence = { health: 100, armor: 8, magicResist: 22 };
+export const MAGE: ChampionDefence = { health: 90, armor: 0, magicResist: 15 };
+
 export const data: ContentPackData = {
   // `coreRange` is the oldest core this pack works against. Core parses
   // exactly two shapes — `*` and `>=X.Y.Z` — and treats anything else as
@@ -89,11 +113,12 @@ export const data: ContentPackData = {
   // published manifest; raise both together.
   manifest: { id: 'tidelight', version: '1.0.0', coreRange: '>=1.20.0' },
   champions: [
-    hero('brine', 'Brine', { damage: 13, attacksPerSecond: 1.0, range: 150 }, { health: 135 }, [156, 186, 204]),
-    hero('nacre', 'Nacre', { damage: 11, attacksPerSecond: 1.1, range: 480 }, { health: 90 }, [240, 232, 255]),
-    hero('wick', 'Wick', { damage: 10, attacksPerSecond: 1.1, range: 430 }, { health: 100 }, [255, 208, 112]),
-    hero('skerry', 'Skerry', { damage: 16, attacksPerSecond: 1.3, range: 150 }, { health: 105 }, [255, 138, 128]),
-    hero('gull', 'Gull', { damage: 12, attacksPerSecond: 1.0, range: 520 }, { health: 90 }, [150, 204, 255]),
+    // Roles (docs/design.md section 4): tank / AD marksman / support (magic) / AD skirmisher / AP mage.
+    hero('brine', 'Brine', { damage: 13, attacksPerSecond: 1.0, range: 150 }, TANK, [156, 186, 204]),
+    hero('nacre', 'Nacre', { damage: 14, attacksPerSecond: 1.2, range: 480 }, MARKSMAN, [240, 232, 255]),
+    hero('wick', 'Wick', { damage: 10, attacksPerSecond: 1.1, range: 430 }, SUPPORT, [255, 208, 112]),
+    hero('skerry', 'Skerry', { damage: 16, attacksPerSecond: 1.3, range: 150 }, SKIRMISHER, [255, 138, 128]),
+    hero('gull', 'Gull', { damage: 12, attacksPerSecond: 1.0, range: 520 }, MAGE, [150, 204, 255]),
     // The D/F shelf: two sea charms every hero may carry. Not a champion.
     {
       id: 'charms',
@@ -105,7 +130,7 @@ export const data: ContentPackData = {
     },
   ],
   spellDisplay: displayData(),
-  maps: [map],
+  maps: [map, hillMap, ballMap, defendMap, portalsMap, bridgeMap, ...extraMaps],
 };
 
 const code = (api: ContentApi): ContentPackCode => {
@@ -122,7 +147,16 @@ const code = (api: ContentApi): ContentPackCode => {
   return {
     spells,
     // The map's one neutral slot is the Heart: tide, lantern, score, win.
-    slotObjects: { [HEART_ROLE]: (slot, game) => createHeart(game, slot.x, slot.y) },
+    slotObjects: {
+      [HEART_ROLE]: (slot, game) => createHeart(game, slot.x, slot.y),
+      [HILL_ROLE]: (slot, game) => createHill(game, slot.x, slot.y),
+      [BALL_ROLE]: (slot, game) => createPitch(game, slot.x, slot.y),
+      [DEFEND_ROLE]: (_slot, game) => createDefence(game),
+      [PORTALS_ROLE]: (slot, game) => createPortalArena(game, slot.x, slot.y),
+      [BRIDGE_ROLE]: (slot, game) => createBridgeArena(game, slot.x, slot.y),
+      ...extraSlotObjects,
+    },
+    championAI: Object.fromEntries(['brine', 'nacre', 'wick', 'skerry', 'gull'].map(id => [id, defendAI])),
   };
 };
 
