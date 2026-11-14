@@ -212,4 +212,48 @@ describe('engine hooks', () => {
     tick([caster, pulse]);
     expect(pitch.match.ball.vx).toBeLessThanOrEqual(vx);
   });
+
+  it('a steered bot under fire keeps walking its plan instead of stuttering (one owner per frame)', () => {
+    // The only blue bot is the chaser. An enemy stands in reach and hits it
+    // twice a second; each hit is AIChampion's retaliation re-ordering an
+    // attack. Before: the order planted the bot on 11 of every 12 frames.
+    const bot = hero(BLUE, CENTRE.x - 600, CENTRE.y + 300);
+    bot.brain = {};
+    const enemy = hero(RED, CENTRE.x - 600, CENTRE.y + 380);
+    const units = [bot, enemy];
+    const start = { x: bot.position.x, y: bot.position.y };
+    let moving = 0;
+    const FRAMES = 150;
+    for (let f = 0; f < FRAMES; f++) {
+      if (f % 30 === 0) bot.basicAttack.order(enemy);
+      const before = { x: bot.position.x, y: bot.position.y };
+      tick(units, 16);
+      bot.update();
+      if (Math.hypot(bot.position.x - before.x, bot.position.y - before.y) > 0.5) moving++;
+    }
+    // Walking nearly every frame, and it actually got somewhere.
+    expect(moving / FRAMES).toBeGreaterThan(0.85);
+    expect(Math.hypot(bot.position.x - start.x, bot.position.y - start.y)).toBeGreaterThan(200);
+  });
+
+  it('a defender with an enemy in reach is left to fight where it stands', () => {
+    // Two blue bots: the one nearer the pearl chases, the far one defends.
+    const chaser = hero(BLUE, CENTRE.x - 60, CENTRE.y);
+    chaser.brain = {};
+    const defender = hero(BLUE, PITCH.left + 300, CY);
+    defender.brain = {};
+    const enemy = hero(RED, PITCH.left + 300, CY + 60);
+    const units = [chaser, defender, enemy];
+    tick(units, 250); // plans made
+    defender.basicAttack.order(enemy);
+    for (let f = 0; f < 20; f++) tick(units, 16);
+    expect(defender.basicAttack.target).toBe(enemy);
+  });
+
+  it('the pearl draws on the ground layer, above the fountain’s healing ring', () => {
+    const layers = buildTestApi().layers;
+    expect(pitch.zIndex).toBe(layers.GROUND_Z_INDEX);
+    expect(pitch.zIndex).toBeGreaterThan(layers.FOUNTAIN_Z_INDEX);
+    expect(pitch.zIndex).toBeLessThan(layers.UNIT_Z_INDEX);
+  });
 });

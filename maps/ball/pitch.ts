@@ -59,11 +59,16 @@ function build() {
   const { Champion } = api.units;
 
   class BallPitch extends api.GameObject {
-    zIndex = -4.5;
+    // The pearl is all this object draws, so it sits on the ground layer: above
+    // the fountain's healing ring (FOUNTAIN_Z_INDEX), which used to hide it
+    // whenever it rolled home, and still under every unit.
+    zIndex = api.layers.GROUND_Z_INDEX;
     alwaysVisible = true;
     readonly match = new BallMatch();
     private clockMs = 0;
     private botClock = 0;
+    private plans = new WeakMap<object, { to: { x: number; y: number }; mayFight: boolean }>();
+    private steered: any[] = [];
     private hudClock = 0;
     private last = new WeakMap<object, { x: number; y: number }>();
     private hitAt = new WeakMap<object, number>();
@@ -154,6 +159,16 @@ function build() {
      * own movement is switched off and the nearest bot of each side is steered
      * to get behind the pearl and run it at the enemy goal; the rest hold a
      * line between the pearl and their own goal. They still cast and swing.
+     *
+     * **One owner per bot per frame.** Switching `_autoMove` off stops the
+     * brain walking, but not its retaliation: a hit still hands the bot's
+     * `basicAttack` an order, and that controller then `navigateTo`s or plants
+     * on *every frame*. Steering only every 200ms meant a fighting bot was
+     * pulled toward the pearl for one frame and back for eleven — the
+     * stutter reported in fights. So this only *plans* every 200ms
+     * (`plans`), and `applyPlans` enforces the plan every frame: a defender
+     * with an enemy already in reach is left to swing where it stands;
+     * everyone else has any attack order dropped and walks the plan.
      */
     private steerBots(): void {
       const ball = this.match.ball;
@@ -178,8 +193,30 @@ function build() {
               x: own.x + (ball.x - own.x) * 0.35 + (side === BLUE ? 120 : -120),
               y: CY + (ball.y - CY) * 0.4,
             };
-          if (dist(unit.position, to) > 40) unit.moveTo(to.x, to.y);
+          this.plans.set(unit, { to, mayFight: live && unit !== chaser });
         }
+      }
+      this.steered = all;
+    }
+
+    /** Every frame: the plan wins, except for a defender already trading blows in reach. */
+    private applyPlans(): void {
+      for (const unit of this.steered) {
+        if (unit.isDead || unit.toRemove) continue;
+        const plan = this.plans.get(unit);
+        if (!plan) continue;
+        const swing = unit.basicAttack;
+        const target = swing?.target;
+        if (target) {
+          const engaged =
+            plan.mayFight && !target.isDead && dist(unit.position, target.position) <= swing.reachTo(target);
+          if (engaged) continue;
+          swing.clear();
+        }
+        const to = plan.to;
+        if (dist(unit.position, to) <= 40) continue;
+        const d = unit.destination;
+        if (!d || d.x !== to.x || d.y !== to.y) unit.moveTo(to.x, to.y);
       }
     }
 
@@ -219,6 +256,7 @@ function build() {
         this.botClock = 0;
         this.steerBots();
       }
+      this.applyPlans();
       this.remember();
     }
 

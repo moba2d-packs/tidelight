@@ -11,6 +11,7 @@ import { HILL_MAP_ID } from '../maps/hill/layout';
 import { createHill } from '../maps/hill/hill';
 import { createPortalArena } from '../maps/portals/arena';
 import { createBridgeArena } from '../maps/bridge/arena';
+import { provideRaiderFx } from '../maps/defend/raiderSkills';
 
 /**
  * What the twenty-five spell files share: targeting helpers, the two status
@@ -396,3 +397,6 @@ export abstract class TidePassive extends api.Spell {
     this.owner.addBuff(mark);
   }
 }
+
+// Thủ Đèn's raiders cast with these; see `provideRaiderFx` for why it is not an import there.
+provideRaiderFx({ burst, enemiesAt, fireBolt, layZone, slow });

@@ -151,7 +151,7 @@ function build() {
     }
 
     onRemoved(): void {
-      this.tiles.dispose();
+      this.tiles.destroy();
     }
     getDisplayBoundingBox() {
       return this.squareDisplayBoundingBox(MAP_SIZE * 2);

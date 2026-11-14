@@ -18,6 +18,9 @@ export const RAIDER_TYPES: Record<string, MinionTypeDef> = {
   crab: { name: 'Cua Rạn', style: 'melee', speed: 2.4, size: 34, health: 90, damage: 6, attackInterval: 1_300, attackRange: 40, aggroRange: 320, goldBounty: 14 },
   spitter: { name: 'Ốc Phun', style: 'ranged', speed: 2.2, size: 32, health: 60, damage: 7, attackInterval: 1_500, attackRange: 240, aggroRange: 340, goldBounty: 16 },
   brute: { name: 'Hà Đá', style: 'melee', speed: 2.0, size: 48, health: 280, damage: 14, attackInterval: 1_400, attackRange: 50, aggroRange: 320, goldBounty: 30 },
+  eel: { name: 'Lươn Điện', style: 'ranged', speed: 3.0, size: 36, health: 110, damage: 8, attackInterval: 1_200, attackRange: 260, aggroRange: 420, goldBounty: 24 },
+  jelly: { name: 'Sứa Ngọc', style: 'ranged', speed: 2.0, size: 40, health: 150, damage: 5, attackInterval: 1_600, attackRange: 260, aggroRange: 360, goldBounty: 28 },
+  kraken: { name: 'Bạch Tuộc', style: 'ranged', speed: 1.6, size: 96, health: 2_200, damage: 26, attackInterval: 1_500, attackRange: 260, aggroRange: 420, goldBounty: 180 },
   tidelord: { name: 'Chúa Triều', style: 'melee', speed: 1.8, size: 84, health: 1_800, damage: 32, attackInterval: 1_600, attackRange: 80, aggroRange: 360, goldBounty: 150 },
 };
 

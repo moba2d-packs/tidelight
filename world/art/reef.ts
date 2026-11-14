@@ -517,6 +517,6 @@ export class ReefLayer {
   }
 
   dispose(): void {
-    this.tiles.dispose();
+    this.tiles.destroy();
   }
 }

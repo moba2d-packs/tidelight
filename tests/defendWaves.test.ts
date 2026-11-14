@@ -27,11 +27,11 @@ const run = (hostiles: () => number, lanternAlive: () => boolean, maxMs = 600_00
 };
 
 describe('Thủ Đèn wave schedule', () => {
-  it('sends wave 1 after the first delay, then one every 25 s', () => {
+  it('sends wave 1 after the first delay, then one every 22 s', () => {
     const { sent } = run(() => 1, () => true, 100_000);
     expect(sent[0]).toEqual({ atMs: FIRST_WAVE_DELAY_MS, n: 1 });
     expect(sent[1].atMs - sent[0].atMs).toBe(WAVE_INTERVAL_MS);
-    expect(WAVE_INTERVAL_MS).toBe(25_000);
+    expect(WAVE_INTERVAL_MS).toBe(22_000);
   });
 
   it('sends exactly WAVES_TO_WIN waves and no more', () => {
@@ -52,8 +52,8 @@ describe('Thủ Đèn wave schedule', () => {
 
   it('brings a boss on every 5th wave and only then', () => {
     for (let n = 1; n <= WAVES_TO_WIN; n++) {
-      const bosses = waveSpec(n).spawns.filter(s => s.kind === 'tidelord').length;
-      expect(bosses).toBe(n % BOSS_EVERY === 0 ? 1 : 0);
+      const bosses = waveSpec(n).spawns.filter(s => s.kind === 'tidelord' || s.kind === 'kraken').length;
+      expect(bosses).toBe(n % BOSS_EVERY === 0 ? (n === WAVES_TO_WIN ? 2 : 1) : 0);
       expect(waveSpec(n).boss).toBe(n % BOSS_EVERY === 0);
     }
     expect(waveSpec(5).spawns[0].kind).toBe('tidelord');

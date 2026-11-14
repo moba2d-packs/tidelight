@@ -42,6 +42,15 @@ interface Tile {
 /** Paints everything that never moves, for one world tile. `ctx` is already in world space. */
 export type TileBaker = (ctx: Ctx, tile: Box) => void;
 
+/** The slice of `document` the cache listens to; injectable for tests. */
+export interface PageVisibility {
+  readonly hidden: boolean;
+  addEventListener(type: 'visibilitychange', listener: () => void): void;
+  removeEventListener(type: 'visibilitychange', listener: () => void): void;
+}
+const thePage = (): PageVisibility | null =>
+  typeof document !== 'undefined' && typeof document.addEventListener === 'function' ? document : null;
+
 export class TileCache {
   private readonly tiles = new Map<number, Tile>();
   private readonly perRow: number;
@@ -51,12 +60,30 @@ export class TileCache {
   private stillFor = 0;
   /** Paints done, for tests and the measurement harness. */
   bakes = 0;
+  /**
+   * A backgrounded phone purges offscreen canvases — these tiles among them —
+   * and comes back to a black map ("Back ra app khác xong quay lại game là nó
+   * đen hết luôn"). Nothing reliable says *which* canvases went, so every
+   * return from hidden repaints: the visible tiles, once, on a resume.
+   */
+  private stale = false;
+  private wasHidden = false;
+  private readonly onVisibility = () => {
+    if (!this.page) return;
+    if (this.page.hidden) this.wasHidden = true;
+    else if (this.wasHidden) {
+      this.wasHidden = false;
+      this.stale = true;
+    }
+  };
 
   constructor(
     mapSize: number,
-    private readonly bakeTile: TileBaker
+    private readonly bakeTile: TileBaker,
+    private readonly page: PageVisibility | null = thePage()
   ) {
     this.perRow = Math.ceil(mapSize / TILE);
+    page?.addEventListener('visibilitychange', this.onVisibility);
   }
 
   private bake(tx: number, ty: number, level: number): Tile {
@@ -95,6 +122,10 @@ export class TileCache {
 
   /** Blit the still half of the map for `view`, painting what is missing. */
   draw(ctx: Ctx, view: View, scale: number): void {
+    if (this.stale) {
+      this.stale = false;
+      this.dispose();
+    }
     const perRow = this.perRow;
     this.frame++;
     this.stillFor = scale === this.lastScale ? this.stillFor + 1 : 0;
@@ -146,5 +177,11 @@ export class TileCache {
   dispose(): void {
     for (const tile of this.tiles.values()) tile.canvas.width = 0;
     this.tiles.clear();
+  }
+
+  /** For good: also stops listening to the page. */
+  destroy(): void {
+    this.dispose();
+    this.page?.removeEventListener('visibilitychange', this.onVisibility);
   }
 }

@@ -139,6 +139,10 @@ const code = (api: ContentApi): ContentPackCode => {
   // makes them constructible at all. The loaders below are lazy, so nothing
   // has evaluated yet when this runs.
   setPackApi(api);
+  // Thủ Đèn's raiders cast with fx's helpers even when no Tidelight hero is in
+  // the match (so no spell module ever loads it): fetch it now, after the api
+  // is set. The first wave is 15 s away; the import lands long before.
+  void import('./world/fx');
 
   const spells: Record<string, SpellSource> = {};
   for (const [id, load] of Object.entries(spellModules)) {

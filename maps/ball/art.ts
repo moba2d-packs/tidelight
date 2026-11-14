@@ -14,8 +14,11 @@ const TINT: Partial<Palette> = {
   ABYSS: [5, 17, 38],
   SHADOW: [3, 9, 22],
   DEEP_WAVE: [18, 52, 92],
-  SAND: [232, 212, 164],
-  SAND_DARK: [186, 160, 120],
+  // Damp, low-tide sand rather than dry noon sand: the pitch is most of the
+  // screen for a whole match, and the brighter pair read as glare (reported).
+  // The pearl stays bright, which is the point — it has to pop against this.
+  SAND: [178, 158, 120],
+  SAND_DARK: [138, 118, 88],
   KELP: [34, 122, 90],
   KELP_LIGHT: [112, 200, 130],
 };
@@ -59,7 +62,7 @@ const poolCentre = (pts: Pt[]): Pt => ({ x: pts.reduce((a, p) => a + p.x, 0) / p
 function lines(ctx: Ctx, pal: Palette): void {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  pen(ctx, rgba(pal.CREAM, 240), LINE_W + 1);
+  pen(ctx, rgba(pal.CREAM, 170), LINE_W + 1);
   ctx.beginPath();
   ctx.rect(L + IN, T + IN, R - L - 2 * IN, B - T - 2 * IN);
   ctx.moveTo(C, T + IN);
@@ -89,7 +92,7 @@ function lines(ctx: Ctx, pal: Palette): void {
     }
   }
   ctx.stroke();
-  fillEllipse(ctx, rgba(pal.CREAM, 225), C, CY, 22, 22);
+  fillEllipse(ctx, rgba(pal.CREAM, 160), C, CY, 22, 22);
   ctx.lineJoin = 'miter';
 }
 
@@ -122,7 +125,7 @@ function bakeFloor(ctx: Ctx, tile: Box, pal: Palette): void {
   const g = ctx.createLinearGradient(0, T, 0, B);
   g.addColorStop(0, rgba(pal.SAND_DARK));
   g.addColorStop(0.2, rgba(pal.SAND));
-  g.addColorStop(0.5, rgba([240, 224, 178]));
+  g.addColorStop(0.5, rgba([194, 174, 132]));
   g.addColorStop(0.8, rgba(pal.SAND));
   g.addColorStop(1, rgba(pal.SAND_DARK));
   ctx.fillStyle = g;

@@ -7,10 +7,12 @@ import { ensureArt } from '../../world/art/sceneryObject';
 import { defendArt } from './art';
 import { findLantern } from './lantern';
 import { RAIDER_TYPES } from './map';
+import { RaiderSkills } from './raiderSkills';
 import {
   initialDefence,
   stepDefence,
   type DefenceState,
+  type RaiderKind,
   type WaveSpec,
 } from './waves';
 
@@ -25,6 +27,7 @@ import {
 export interface Defence {
   readonly state: DefenceState;
   readonly raiders: any[];
+  readonly skills: RaiderSkills;
   step(dtMs: number): void;
 }
 
@@ -38,8 +41,11 @@ function build() {
 
   class DefenceObject extends api.GameObject implements Defence {
     alwaysVisible = true;
+    // Above the units: it paints the casting labels over the raiders' heads.
+    zIndex = api.layers.OBJECTIVE_Z_INDEX + 2;
     readonly state = initialDefence();
     raiders: any[] = [];
+    readonly skills = new RaiderSkills((at, damageMult) => this.spawnAt('crab', at, damageMult));
     private flash: { text: string; untilMs: number } | null = null;
     private clockMs = 0;
     private scanClock = 0;
@@ -84,19 +90,33 @@ function build() {
       }
     }
 
+    private spawn(kind: RaiderKind, gate: number, healthMult: number, damageMult: number): any {
+      const body = this.world.minionSpawner?.spawn({ teamId: RAIDERS, lane: GATES[gate].id, kind });
+      if (!body) return null;
+      const base = RAIDER_TYPES[kind];
+      const hp = Math.round(base.health * healthMult);
+      body.stats.maxHealth.baseValue = hp;
+      body.stats.health.baseValue = hp;
+      body.damage = Math.round(base.damage * damageMult);
+      this.raiders.push(body);
+      this.skills.track(body, kind, damageMult, this.clockMs);
+      return body;
+    }
+
+    /** A summoned body: spawned at the first gate, then put where it was called. */
+    private spawnAt(kind: RaiderKind, at: { x: number; y: number }, damageMult: number): void {
+      const body = this.spawn(kind, 0, 1 + (damageMult - 1) * 0.8, damageMult);
+      if (!body?.position) return;
+      body.position.set(at.x, at.y);
+      body.destination?.set?.(at.x, at.y);
+    }
+
     private send(wave: WaveSpec): void {
-      const spawner = this.world.minionSpawner;
-      for (const { kind, gate } of wave.spawns) {
-        const body = spawner?.spawn({ teamId: RAIDERS, lane: GATES[gate].id, kind });
-        if (!body) continue;
-        const base = RAIDER_TYPES[kind];
-        const hp = Math.round(base.health * wave.healthMult);
-        body.stats.maxHealth.baseValue = hp;
-        body.stats.health.baseValue = hp;
-        body.damage = Math.round(base.damage * wave.damageMult);
-        this.raiders.push(body);
-      }
-      this.say(wave.boss ? `Sóng ${wave.number}: Chúa Triều xuất hiện!` : `Sóng ${wave.number}!`);
+      for (const { kind, gate } of wave.spawns) this.spawn(kind, gate, wave.healthMult, wave.damageMult);
+      const bosses = wave.spawns
+        .filter(s => s.kind === 'tidelord' || s.kind === 'kraken')
+        .map(s => RAIDER_TYPES[s.kind].name);
+      this.say(bosses.length ? `Sóng ${wave.number}: ${bosses.join(' và ')} xuất hiện!` : `Sóng ${wave.number}!`);
     }
 
     step(dtMs: number): void {
@@ -120,6 +140,7 @@ function build() {
         hostiles: this.raiders.length,
       });
       if (wave) this.send(wave);
+      this.skills.step(this.clockMs);
     }
 
     update(): void {
@@ -139,7 +160,27 @@ function build() {
       });
     }
 
-    draw(): void {}
+    /** The skill a raider is winding up, named over its head in the skill's colour. */
+    draw(): void {
+      for (const body of this.raiders) {
+        const skill = this.skills.winding(body);
+        if (!skill || !body.position || body.visibleToPlayerTeam === false) continue;
+        const r = (RAIDER_TYPES[body.kind ?? '']?.size ?? 40) / 2;
+        push();
+        textAlign(CENTER, CENTER);
+        textSize(18);
+        textStyle(BOLD);
+        stroke(0, 0, 0, 200);
+        strokeWeight(4);
+        fill(skill.tint[0], skill.tint[1], skill.tint[2]);
+        text(skill.name + '!', body.position.x, body.position.y - r - 34);
+        pop();
+      }
+    }
+
+    getDisplayBoundingBox() {
+      return this.squareDisplayBoundingBox(DEFEND_SIZE * 2);
+    }
 
     /** Core's restart/exit does not remove objects one by one: let go of the DOM here too. */
     onMatchTeardown(): void {

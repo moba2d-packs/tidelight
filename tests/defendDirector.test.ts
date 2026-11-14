@@ -8,7 +8,7 @@ import { createDefence } from '../maps/defend/defence';
 import { defendPosture, DEFEND_RADIUS } from '../maps/defend/defendAI';
 import { DEFENDERS, GATES, LANTERN, RAIDERS } from '../maps/defend/layout';
 import { RAIDER_TYPES, defendMap } from '../maps/defend/map';
-import { WAVES_TO_WIN, FIRST_WAVE_DELAY_MS, waveSpec } from '../maps/defend/waves';
+import { WAVES_TO_WIN, WAVE_INTERVAL_MS, FIRST_WAVE_DELAY_MS, waveSpec } from '../maps/defend/waves';
 import { data } from '../pack';
 
 const { Champion } = buildTestApi().units;
@@ -73,7 +73,7 @@ describe('the Thủ Đèn director', () => {
 
   it('gives later waves more health and the boss its body', () => {
     const d = createDefence(game);
-    run(FIRST_WAVE_DELAY_MS + 25_000 * 4, d);
+    run(FIRST_WAVE_DELAY_MS + WAVE_INTERVAL_MS * 4, d);
     const boss = spawned.find(m => m.kind === 'tidelord')!;
     expect(boss).toBeTruthy();
     expect(boss.stats.maxHealth.baseValue).toBe(Math.round(RAIDER_TYPES.tidelord.health * waveSpec(5).healthMult));
@@ -82,7 +82,7 @@ describe('the Thủ Đèn director', () => {
 
   it('is won after the last wave when the field is cleared', () => {
     const d = createDefence(game);
-    run(FIRST_WAVE_DELAY_MS + 25_000 * (WAVES_TO_WIN - 1), d);
+    run(FIRST_WAVE_DELAY_MS + WAVE_INTERVAL_MS * (WAVES_TO_WIN - 1), d);
     expect(d.state.wave).toBe(WAVES_TO_WIN);
     expect(d.state.outcome).toBe('play');
     for (const m of spawned) m.isDead = true;
@@ -120,7 +120,7 @@ describe('the map as data', () => {
     expect(data.maps?.some(m => m.id === defendMap.id)).toBe(true);
     const geometry = await (defendMap.geometry as () => Promise<any>)();
     expect(geometry.lanes.map((l: any) => l.id)).toEqual(GATES.map(g => g.id));
-    expect(Object.keys(defendMap.tuning!.minions!.types!)).toEqual(['crab', 'spitter', 'brute', 'tidelord']);
+    expect(Object.keys(defendMap.tuning!.minions!.types!)).toEqual(['crab', 'spitter', 'brute', 'eel', 'jelly', 'kraken', 'tidelord']);
   });
 });
 
