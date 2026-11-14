@@ -118,6 +118,25 @@ function live(ctx: Ctx, view: View, timeMs: number, pal: Palette): void {
   ctx.fill();
 }
 
+/**
+ * The floes on the plain ground. Their zone is what makes a hero slide, and
+ * core draws it with a clear fill because `bakeFloes` was the picture — so
+ * with the art off this is the only thing that says where the ice is. One
+ * flat fill and one outline for all of them.
+ */
+function plain(ctx: Ctx, view: View): void {
+  ctx.beginPath();
+  ICE_FLOES.forEach((pts, i) => {
+    if (!sees(view, FLOE_BOX[i], 0)) return;
+    pts.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+  });
+  ctx.fillStyle = rgba([170, 214, 232], 200);
+  ctx.fill();
+  pen(ctx, rgba([244, 253, 255]), 3);
+  ctx.stroke();
+}
+
 export const iceArt = (): ReefDescription => ({
   size: ICE_SIZE,
   tint: TINT,
@@ -128,4 +147,5 @@ export const iceArt = (): ReefDescription => ({
   floor: ICE_FLOOR,
   bakeFloor: bakeFloes,
   live,
+  plain,
 });

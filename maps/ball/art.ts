@@ -257,6 +257,30 @@ function live(ctx: Ctx, view: View, timeMs: number, pal: Palette): void {
   ctx.stroke();
 }
 
+/**
+ * The pitch on the plain ground: the two net pockets and goal-line bars in
+ * their courts' colours, and the touchlines. The jaws are walls and core
+ * draws them; which mouth is whose, and where the line is, only this says.
+ */
+function plain(ctx: Ctx, view: View, _timeMs: number, pal: Palette): void {
+  if (!sees(view, PITCH_BOX, POCKET + 40)) return;
+  for (const [pocketX, lineX, c] of [
+    [L - POCKET, L, pal.TIDE],
+    [R, R - 10, pal.EMBER],
+  ] as const) {
+    ctx.fillStyle = rgba(c, 70);
+    ctx.fillRect(pocketX, CY - GOAL_HALF, POCKET, GOAL_HALF * 2);
+    ctx.fillStyle = rgba(c, 235);
+    ctx.fillRect(lineX, CY - GOAL_HALF, 10, GOAL_HALF * 2);
+  }
+  pen(ctx, rgba(pal.CREAM, 150), 4);
+  ctx.beginPath();
+  ctx.rect(L, T, R - L, B - T);
+  ctx.moveTo(C, T);
+  ctx.lineTo(C, B);
+  ctx.stroke();
+}
+
 export const ballArt = (): ReefDescription => ({
   size: MAP_SIZE,
   tint: TINT,
@@ -266,4 +290,5 @@ export const ballArt = (): ReefDescription => ({
   kelp: BALL_KELP,
   bakeFloor,
   live,
+  plain,
 });

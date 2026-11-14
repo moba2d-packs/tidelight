@@ -74,6 +74,13 @@ export interface SceneState {
    * a core too old to answer gets the full picture, never a poorer one.
    */
   tier?: 0 | 1 | 2;
+  /**
+   * The player's "Nền bản đồ: Đơn giản" (`api.render.plainGround`): core is
+   * drawing the islands, sea walls and kelp as solid fills, so only what has
+   * to be read to play is painted — the tide over the shoals, the channel's
+   * chevrons, the berths and the gates. Absent means the painted reef.
+   */
+  plain?: boolean;
 }
 
 
@@ -296,6 +303,7 @@ function paintWaves(ctx: Ctx, view: View, timeMs: number): void {
 
 /** Islands whose still art the flood sheet of a shoal can reach. */
 const ISLANDS_ON = (box: Box): IslandArt[] => ALL_ISLANDS.filter(art => overlaps(islandReach(art), box));
+const NO_ISLANDS: IslandArt[] = [];
 const FLOODABLE = { north: ISLANDS_ON(SHOAL_NORTH), south: ISLANDS_ON(SHOAL_SOUTH) };
 
 function paintShoalLive(
@@ -337,7 +345,7 @@ function paintShoalLive(
   }
   ctx.stroke();
   // Current streaks on the flooded sheet.
-  if (wet > 0.6 && state.tide.favoured && (state.tier ?? 0) < 1) {
+  if (wet > 0.6 && state.tide.favoured && (state.tier ?? 0) < 1 && !state.plain) {
     const dir = state.tide.favoured === BLUE ? 1 : -1;
     pen(ctx, rgba(INK.FOAM, 120), 3);
     ctx.beginPath();
@@ -596,6 +604,22 @@ export function paintReef(ctx: Ctx, tiles: ReefTiles, view: View, scale: number,
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'miter';
+  if (state.plain) {
+    // No sea, tiles, waves, lamps or kelp blades, and no island re-inked over
+    // a flood sheet: the islands are core's solid walls now. What is left is
+    // the state of the match written on the ground.
+    const level = state.tide.level;
+    const favoured = state.tide.favoured;
+    paintShoalLive(ctx, view, SHOAL_NORTH, level, PEARL_BEDS_NORTH, favoured === BLUE, NO_ISLANDS, state);
+    paintShoalLive(ctx, view, SHOAL_SOUTH, 1 - level, PEARL_BEDS_SOUTH, favoured === RED, NO_ISLANDS, state);
+    paintChevrons(ctx, view, state);
+    paintDockLive(ctx, view, BLUE, state, Math.max(tier, 1));
+    paintDockLive(ctx, view, RED, state, Math.max(tier, 1));
+    paintGateBatched(ctx, view, BLUE, state.gateShut[BLUE], state);
+    paintGateBatched(ctx, view, RED, state.gateShut[RED], state);
+    ctx.restore();
+    return;
+  }
   paintOuterSea(ctx, view);
   tiles.draw(ctx, view, scale);
   // The drifting crescents are open sea's only motion and nothing reads them.

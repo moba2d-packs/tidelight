@@ -1,6 +1,7 @@
 import { api } from '../../packApi';
 import { ReefLayer, type ReefDescription } from './reef';
 import type { View } from './draw';
+import { plainGround } from './tier';
 
 /**
  * The game object that puts a `ReefLayer` on the ground, the way `ReefScenery`
@@ -31,7 +32,14 @@ function build() {
     draw(): void {
       const camera = (this.game as any).camera;
       const view: View = camera?.getBoundingBox?.() ?? { x: 0, y: 0, w: this.size, h: this.size };
-      this.layer.paint(drawingContext as CanvasRenderingContext2D, view, camera?.currentScale ?? 1, millis());
+      // Asked every frame: the setting changes the very next one.
+      this.layer.paint(
+        drawingContext as CanvasRenderingContext2D,
+        view,
+        camera?.currentScale ?? 1,
+        millis(),
+        plainGround(this.game)
+      );
     }
     onRemoved(): void {
       this.layer.dispose();

@@ -102,6 +102,14 @@ export interface ReefDescription {
   bake?: (ctx: Ctx, tile: Box, pal: Palette) => void;
   /** Animated set pieces, drawn every frame after the kelp. Cull with `sees(view, …)`. */
   live?: (ctx: Ctx, view: View, timeMs: number, pal: Palette) => void;
+  /**
+   * What a player must still read when they chose "Nền bản đồ: Đơn giản" and
+   * every other thing here is left out — ground that changes how a hero moves
+   * or scores and that core does not draw for itself (an ice floe, a goal
+   * mouth). Flat and cheap, in the hand of core's solid fills; never
+   * decoration. Walls and kelp are core's to draw in that mode, not this hook's.
+   */
+  plain?: (ctx: Ctx, view: View, timeMs: number, pal: Palette) => void;
 }
 
 /** What the geometry's `terrain.wall` is: every sea polygon and every rock part. */
@@ -494,6 +502,8 @@ export class ReefArt {
 export class ReefLayer {
   readonly art: ReefArt;
   readonly tiles: TileCache;
+  /** The tiles were let go for the plain ground; `TileCache.draw` bakes them again. */
+  private released = false;
 
   constructor(desc: ReefDescription) {
     this.art = new ReefArt(desc);
@@ -505,7 +515,25 @@ export class ReefLayer {
    * 2D context with the camera's transform already on it; `scale` is the camera's
    * current scale, which picks the tiles' level.
    */
-  paint(ctx: Ctx, view: View, scale: number, timeMs: number): void {
+  paint(ctx: Ctx, view: View, scale: number, timeMs: number, plain = false): void {
+    if (plain) {
+      // Core is drawing its solid walls and kelp: sea, tiles, blades and the
+      // live set pieces are all decoration over that. The tiles are megabytes
+      // of canvas nobody is looking at, so they go — once, not every frame.
+      if (!this.released) {
+        this.tiles.dispose();
+        this.released = true;
+      }
+      const marks = this.art.desc.plain;
+      if (!marks) return;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'miter';
+      marks(ctx, view, timeMs, this.art.pal);
+      ctx.restore();
+      return;
+    }
+    this.released = false;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'miter';

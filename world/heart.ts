@@ -40,7 +40,7 @@ import {
 } from './rules';
 import { paintReef, ReefTiles } from './scenery';
 import { arcTo_, fillEllipse, fillRect, pen, rgba, seg, solid } from './art/draw';
-import { renderTier } from './art/tier';
+import { plainGround, renderTier } from './art/tier';
 import { ensureMapObject } from '../maps';
 import { onMap } from '../maps/onMap';
 
@@ -134,6 +134,7 @@ function build() {
       super({ game, position: createVector(CENTER.x, CENTER.y) });
     }
     private readonly tiles = new ReefTiles();
+    private wasPlain = false;
     draw(): void {
       const camera = (this.game as any).camera;
       const cam = camera?.getBoundingBox?.();
@@ -144,7 +145,13 @@ function build() {
         score: this.heart.score,
         gateShut: { [BLUE]: this.heart.gateShut(BLUE), [RED]: this.heart.gateShut(RED) },
         tier: renderTier(this.game),
+        plain: plainGround(this.game),
       };
+      if (state.plain !== this.wasPlain) {
+        // Megabytes of baked reef nobody is looking at; `draw` bakes them again.
+        if (state.plain) this.tiles.dispose();
+        this.wasPlain = state.plain;
+      }
       paintReef(drawingContext as CanvasRenderingContext2D, this.tiles, view, camera?.currentScale ?? 1, state);
       this.heart.drawPearls();
     }
