@@ -39,6 +39,8 @@ import {
   type TideState,
 } from './rules';
 import { paintReef, ReefTiles } from './scenery';
+import { arcTo_, fillEllipse, fillRect, pen, rgba, seg, solid } from './art/draw';
+import { renderTier } from './art/tier';
 import { ensureMapObject } from '../maps';
 import { onMap } from '../maps/onMap';
 
@@ -141,6 +143,7 @@ function build() {
         tide: this.heart.tide(),
         score: this.heart.score,
         gateShut: { [BLUE]: this.heart.gateShut(BLUE), [RED]: this.heart.gateShut(RED) },
+        tier: renderTier(this.game),
       };
       paintReef(drawingContext as CanvasRenderingContext2D, this.tiles, view, camera?.currentScale ?? 1, state);
       this.heart.drawPearls();
@@ -449,46 +452,54 @@ function build() {
       this.scenery.toRemove = true;
     }
 
+    /**
+     * Pearls and the lantern go straight to the 2D context: same shapes, same
+     * colours, same order as the p5 calls they replace, without p5's colour
+     * parsing and argument normalising around each one.
+     */
     drawPearls(): void {
       const dry = dryShoal(this.tide());
       if (!dry) return;
       const now = this.now;
       const bob = Math.sin(this.clockMs / 300) * 3;
-      push();
-      noStroke();
+      const ctx = drawingContext as CanvasRenderingContext2D;
+      ctx.save();
       for (const pearl of this.pearls) {
         if (pearl.shoal !== dry || pearl.readyAtMs > now) continue;
-        fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2], 60);
-        circle(pearl.at.x, pearl.at.y - 8, 62 + bob * 2);
-        fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2], 120);
-        ellipse(pearl.at.x + 2, pearl.at.y + 6, 26, 9);
-        fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2]);
-        circle(pearl.at.x, pearl.at.y - 10 + bob, 26);
-        fill(255, 255, 255, 230);
-        circle(pearl.at.x - 5, pearl.at.y - 15 + bob, 8);
+        fillEllipse(ctx, rgba(INK.PEARL, 60), pearl.at.x, pearl.at.y - 8, 62 + bob * 2, 62 + bob * 2);
+        fillEllipse(ctx, rgba(INK.SHADOW, 120), pearl.at.x + 2, pearl.at.y + 6, 26, 9);
+        fillEllipse(ctx, solid(INK.PEARL), pearl.at.x, pearl.at.y - 10 + bob, 26, 26);
+        fillEllipse(ctx, 'rgba(255,255,255,' + 230 / 255 + ')', pearl.at.x - 5, pearl.at.y - 15 + bob, 8, 8);
       }
-      pop();
+      ctx.restore();
     }
 
     draw(): void {
+      const tier = renderTier(this.game);
+      // One path per colour where shapes cannot touch — but only once the
+      // machine is behind. On a GPU canvas a multi-shape path is rasterised by
+      // a different renderer than a lone shape and its edges land a few levels
+      // off; tier 0 is the promise that nothing moved, so it keeps one call a
+      // shape, exactly as p5 issued them.
+      const batch = tier >= 1;
       const at = this.lanternPos;
       const t = this.clockMs / 1000;
       const relighting = this.now < this.relightUntilMs;
       const pushDir = Math.sign(this.push);
       const lead = pushDir > 0 ? courtColor(BLUE) : pushDir < 0 ? courtColor(RED) : INK.CREAM;
       const bob = Math.sin(t * 2.1) * 4;
-      push();
-
-      // The glow: who stands inside it is the whole game, so it is drawn.
-      noStroke();
-      fill(INK.LANTERN[0], INK.LANTERN[1], INK.LANTERN[2], relighting ? 10 : 22);
-      circle(at.x, at.y, ESCORT_RADIUS * 2);
-      // The ring's dashes: one path and one stroke, not 36 p5 arcs.
       const ctx = drawingContext as CanvasRenderingContext2D;
       ctx.save();
-      ctx.strokeStyle = `rgba(${lead[0]},${lead[1]},${lead[2]},${170 / 255})`;
-      ctx.lineWidth = 4;
       ctx.lineCap = 'round';
+
+      // The glow: who stands inside it is the whole game, so it is drawn. On a
+      // machine that is drowning the dashed ring says the same thing alone —
+      // the disc is the widest translucent fill on the map.
+      if (tier < 2) {
+        fillEllipse(ctx, rgba(INK.LANTERN, relighting ? 10 : 22), at.x, at.y, ESCORT_RADIUS * 2, ESCORT_RADIUS * 2);
+      }
+      // The ring's dashes: one path and one stroke.
+      pen(ctx, rgba(lead, 170), 4);
       ctx.beginPath();
       const dashes = 36;
       const spin = t * 0.25 * (pushDir || 1);
@@ -498,77 +509,97 @@ function build() {
         ctx.arc(at.x, at.y, ESCORT_RADIUS, a0, a0 + Math.PI / dashes);
       }
       ctx.stroke();
-      ctx.restore();
 
-      // Escort pips: one row per court, either side of the lantern.
-      noStroke();
+      // Escort pips: one row per court, either side of the lantern. The whole
+      // ones are opaque and 20 apart, so a row is one path.
       const pips = (count: number, court: Court, side: number): void => {
         const c = courtColor(court);
         const whole = Math.min(4, Math.floor(count + 1e-6));
-        for (let i = 0; i < whole; i++) {
-          fill(c[0], c[1], c[2]);
-          circle(at.x + side * (74 + i * 20), at.y + 74, 14);
+        if (whole > 0 && batch) {
+          ctx.fillStyle = solid(c);
+          ctx.beginPath();
+          for (let i = 0; i < whole; i++) {
+            const x = at.x + side * (74 + i * 20);
+            ctx.moveTo(x + 7, at.y + 74);
+            ctx.arc(x, at.y + 74, 7, 0, Math.PI * 2);
+          }
+          ctx.fill();
+        } else {
+          for (let i = 0; i < whole; i++) fillEllipse(ctx, solid(c), at.x + side * (74 + i * 20), at.y + 74, 14, 14);
         }
         if (count - whole > 0.2 && whole < 4) {
-          fill(c[0], c[1], c[2], 130);
-          circle(at.x + side * (74 + whole * 20), at.y + 74, 9);
+          fillEllipse(ctx, rgba(c, 130), at.x + side * (74 + whole * 20), at.y + 74, 9, 9);
         }
       };
       pips(this.escort.blue, BLUE, -1);
       pips(this.escort.red, RED, 1);
 
       // The float it rides on.
-      fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2], 150);
-      ellipse(at.x + 4, at.y + 40, 120, 34);
-      fill(INK.REEF_BASE[0], INK.REEF_BASE[1], INK.REEF_BASE[2]);
-      ellipse(at.x, at.y + 32, 116, 34);
-      fill(lead[0], lead[1], lead[2]);
-      ellipse(at.x, at.y + 28, 92, 22);
+      fillEllipse(ctx, rgba(INK.SHADOW, 150), at.x + 4, at.y + 40, 120, 34);
+      fillEllipse(ctx, solid(INK.REEF_BASE), at.x, at.y + 32, 116, 34);
+      fillEllipse(ctx, solid(lead), at.x, at.y + 28, 92, 22);
 
-      // The paper lantern: halo, body, ribs, flame.
+      // The paper lantern: halo, body, ribs, flame. The halo and the ribs are
+      // the lantern's decoration and go first when frames are short; the body
+      // and the flame are what say "lit" and "relighting", and stay.
       const pulse = 0.5 + 0.5 * Math.sin(t * 3);
-      fill(INK.LANTERN[0], INK.LANTERN[1], INK.LANTERN[2], relighting ? 24 : 54 + 30 * pulse);
-      circle(at.x, at.y - 18 + bob, 150);
-      fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2]);
-      rect(at.x - 20, at.y - 66 + bob, 40, 10, 4);
-      rect(at.x - 20, at.y + 16 + bob, 40, 10, 4);
-      const body = relighting ? INK.SAND_DARK : INK.LANTERN;
-      fill(body[0], body[1], body[2]);
-      rect(at.x - 32, at.y - 58 + bob, 64, 76, 26);
-      stroke(INK.EMBER[0], INK.EMBER[1], INK.EMBER[2], 150);
-      strokeWeight(2.5);
-      noFill();
-      for (let rib = -1; rib <= 1; rib++) {
-        arc(at.x + rib * 4, at.y - 20 + bob, 30 + Math.abs(rib) * 26, 74, -Math.PI / 2, Math.PI / 2);
-        arc(at.x - rib * 4, at.y - 20 + bob, 30 + Math.abs(rib) * 26, 74, Math.PI / 2, (Math.PI * 3) / 2);
+      if (tier < 1) {
+        fillEllipse(ctx, rgba(INK.LANTERN, relighting ? 24 : 54 + 30 * pulse), at.x, at.y - 18 + bob, 150, 150);
       }
-      noStroke();
+      if (batch) {
+        ctx.fillStyle = solid(INK.SHADOW);
+        ctx.beginPath();
+        ctx.roundRect(at.x - 20, at.y - 66 + bob, 40, 10, 4);
+        ctx.roundRect(at.x - 20, at.y + 16 + bob, 40, 10, 4);
+        ctx.fill();
+      } else {
+        fillRect(ctx, solid(INK.SHADOW), at.x - 20, at.y - 66 + bob, 40, 10, 4);
+        fillRect(ctx, solid(INK.SHADOW), at.x - 20, at.y + 16 + bob, 40, 10, 4);
+      }
+      fillRect(ctx, solid(relighting ? INK.SAND_DARK : INK.LANTERN), at.x - 32, at.y - 58 + bob, 64, 76, 26);
+      if (tier < 2) {
+        pen(ctx, rgba(INK.EMBER, 150), 2.5);
+        if (batch) ctx.beginPath();
+        for (let rib = -1; rib <= 1; rib++) {
+          const w = 30 + Math.abs(rib) * 26;
+          for (const half of [1, -1]) {
+            if (!batch) ctx.beginPath();
+            const a0 = half > 0 ? -Math.PI / 2 : Math.PI / 2;
+            arcTo_(ctx, at.x + half * rib * 4, at.y - 20 + bob, w, 74, a0, a0 + Math.PI);
+            if (!batch) ctx.stroke();
+          }
+        }
+        if (batch) ctx.stroke();
+      }
       if (!relighting) {
-        fill(INK.LANTERN_HOT[0], INK.LANTERN_HOT[1], INK.LANTERN_HOT[2]);
-        ellipse(at.x, at.y - 18 + bob, 20, 30 + 6 * pulse);
+        fillEllipse(ctx, solid(INK.LANTERN_HOT), at.x, at.y - 18 + bob, 20, 30 + 6 * pulse);
       }
 
       // Which way it is going: chevrons on the leading side.
       if (pushDir !== 0) {
-        stroke(lead[0], lead[1], lead[2]);
-        strokeWeight(6);
-        noFill();
+        pen(ctx, solid(lead), 6);
+        if (batch) ctx.beginPath();
         for (let i = 0; i < 2; i++) {
           const x = at.x + pushDir * (58 + i * 20 + ((t * 30) % 12));
-          line(x, at.y - 34, x + pushDir * 14, at.y - 18);
-          line(x, at.y - 2, x + pushDir * 14, at.y - 18);
+          for (const fromY of [at.y - 34, at.y - 2]) {
+            if (!batch) ctx.beginPath();
+            seg(ctx, x, fromY, x + pushDir * 14, at.y - 18);
+            if (!batch) ctx.stroke();
+          }
         }
+        if (batch) ctx.stroke();
       }
 
       // The anchor: a ring of chain while Brine's hold is on.
       if (this.hold && this.now < this.hold.untilMs) {
-        const c = courtColor(this.hold.court);
-        stroke(c[0], c[1], c[2], 230);
-        strokeWeight(5);
-        noFill();
-        circle(at.x, at.y + 30, 150 + Math.sin(t * 8) * 6);
+        pen(ctx, rgba(courtColor(this.hold.court), 230), 5);
+        ctx.beginPath();
+        const r = (150 + Math.sin(t * 8) * 6) / 2;
+        ctx.ellipse(at.x, at.y + 30, r, r, 0, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.stroke();
       }
-      pop();
+      ctx.restore();
     }
 
     getDisplayBoundingBox() {

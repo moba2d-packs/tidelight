@@ -67,6 +67,13 @@ export interface SceneState {
   tide: TideState;
   score: Score;
   gateShut: Record<Court, boolean>;
+  /**
+   * How much the machine can afford (`api.render.stressTier`): 0 paints
+   * everything, 1 drops what only decorates (drifting waves, lamp and berth
+   * glows, current streaks), 2 is reserved for heavier cuts. Absent means 0 —
+   * a core too old to answer gets the full picture, never a poorer one.
+   */
+  tier?: 0 | 1 | 2;
 }
 
 
@@ -330,7 +337,7 @@ function paintShoalLive(
   }
   ctx.stroke();
   // Current streaks on the flooded sheet.
-  if (wet > 0.6 && state.tide.favoured) {
+  if (wet > 0.6 && state.tide.favoured && (state.tier ?? 0) < 1) {
     const dir = state.tide.favoured === BLUE ? 1 : -1;
     pen(ctx, rgba(INK.FOAM, 120), 3);
     ctx.beginPath();
@@ -376,7 +383,7 @@ function paintChevrons(ctx: Ctx, view: View, state: SceneState): void {
   ctx.stroke();
 }
 
-function paintDockLive(ctx: Ctx, view: View, court: Court, state: SceneState): void {
+function paintDockLive(ctx: Ctx, view: View, court: Court, state: SceneState, tier: number): void {
   const berth = berthX(court);
   if (!sees(view, { x: berth - 80, y: RAIL_Y - 220, w: 160, h: 440 })) return;
   const c = courtInk(court);
@@ -388,10 +395,31 @@ function paintDockLive(ctx: Ctx, view: View, court: Court, state: SceneState): v
     const y = LIGHT_Y[i];
     fillRect(ctx, solid(lit ? INK.LANTERN : INK.SEABED_MARK), berth - 17, y - 24, 34, 46, 10);
     if (lit) {
-      fillEllipse(ctx, rgba(INK.LANTERN, 50 + 40 * pulse), berth, y, 120, 120);
+      if (tier < 1) fillEllipse(ctx, rgba(INK.LANTERN, 50 + 40 * pulse), berth, y, 120, 120);
       fillRect(ctx, solid(INK.LANTERN_HOT), berth - 8, y - 14, 16, 26, 6);
     }
   }
+}
+
+/**
+ * The island lamps for a machine that is behind (tier 1 and up; see
+ * `paintGateBatched` for why not tier 0). The lamp bodies are opaque, a whole
+ * island apart and all one colour, so every lamp in view is one path — two
+ * fills however many islands show, where it was two an island — and the
+ * pulsing glows, which only decorate, are not drawn at all.
+ */
+function paintLampsBatched(ctx: Ctx, view: View): void {
+  const lit: IslandArt[] = [];
+  for (const art of ALL_ISLANDS) if (sees(view, art.box)) lit.push(art);
+  if (lit.length === 0) return;
+  ctx.fillStyle = solid(INK.LANTERN);
+  ctx.beginPath();
+  for (const art of lit) ctx.roundRect(art.centre.x - 8, art.centre.y - 20, 16, 22, 5);
+  ctx.fill();
+  ctx.fillStyle = solid(INK.LANTERN_HOT);
+  ctx.beginPath();
+  for (const art of lit) ctx.roundRect(art.centre.x - 3, art.centre.y - 15, 6, 12, 3);
+  ctx.fill();
 }
 
 function paintLamps(ctx: Ctx, view: View, timeMs: number): void {
@@ -489,28 +517,101 @@ function paintGate(ctx: Ctx, view: View, court: Court, shut: boolean, state: Sce
 }
 
 /**
+ * The same gate in fewer draw calls, for a machine that is behind.
+ *
+ * Not used at tier 0, and that is measured rather than cautious: on a PowerVR
+ * GPU canvas two rounded rectangles in one path are rasterised by a different
+ * path renderer than one drawn alone, and the edges came out up to 62 levels
+ * apart on a few hundred pixels. Nobody would see it — but tier 0 is the
+ * promise that nothing changed, so tier 0 keeps the old calls.
+ */
+function paintGateBatched(ctx: Ctx, view: View, court: Court, shut: boolean, state: SceneState): void {
+  const x = railX(court === BLUE ? -GATE_S : GATE_S);
+  const warden = WARDENS[court];
+  const reach = bounds([warden, { x, y: RAIL_Y - 120 }, { x, y: RAIL_Y + 120 }]);
+  if (!sees(view, reach)) return;
+  const c = courtInk(court);
+  const postY = warden.y < RAIL_Y ? RAIL_Y - 96 : RAIL_Y + 96;
+  // The chain from the warden tower to its gate: the reason the gate is shut.
+  if (shut) {
+    pen(ctx, rgba(INK.SHADOW, 150), 7);
+    ctx.beginPath();
+    seg(ctx, warden.x + 4, warden.y + 6, x + 4, postY + 6);
+    ctx.stroke();
+    pen(ctx, rgba(c, 230), 4);
+    ctx.beginPath();
+    const links = 9;
+    for (let i = 0; i < links; i++) {
+      const a = i / links;
+      const b = (i + 0.6) / links;
+      seg(
+        ctx,
+        warden.x + (x - warden.x) * a,
+        warden.y + (postY - warden.y) * a,
+        warden.x + (x - warden.x) * b,
+        warden.y + (postY - warden.y) * b
+      );
+    }
+    ctx.stroke();
+  }
+  // The two posts stand 192 apart and never touch, so each layer of both is
+  // one path: three fills for the pair, not three a post.
+  const north = RAIL_Y - 96;
+  const south = RAIL_Y + 96;
+  ctx.fillStyle = rgba(INK.SHADOW, 170);
+  ctx.beginPath();
+  ctx.roundRect(x - 15, north - 18, 38, 46, 9);
+  ctx.roundRect(x - 15, south - 18, 38, 46, 9);
+  ctx.fill();
+  ctx.fillStyle = solid(INK.REEF_TOP);
+  ctx.beginPath();
+  ctx.roundRect(x - 19, north - 23, 38, 46, 9);
+  ctx.roundRect(x - 19, south - 23, 38, 46, 9);
+  ctx.fill();
+  ctx.fillStyle = solid(shut ? c : INK.SEABED_MARK);
+  ctx.beginPath();
+  ctx.roundRect(x - 9, north - 13, 18, 22, 5);
+  ctx.roundRect(x - 9, south - 13, 18, 22, 5);
+  ctx.fill();
+  if (shut) {
+    const sway = Math.sin(state.timeMs / 600) * 2;
+    fillRect(ctx, rgba(INK.SHADOW, 150), x - 5, RAIL_Y - 74, 16, 156, 6);
+    fillRect(ctx, solid(c), x - 8 + sway, RAIL_Y - 78, 16, 156, 6);
+    // Five bars, 30 apart: one path.
+    ctx.fillStyle = rgba(INK.CREAM, 220);
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i++) ctx.rect(x - 8 + sway, RAIL_Y + i * 30 - 4, 16, 6);
+    ctx.fill();
+  }
+}
+
+/**
  * Paint the whole reef for the part of the world `view` shows.
  *
  * `ctx` is the sketch's 2D context with the camera's transform already on it;
  * `scale` is the camera's current scale, which picks the tiles' level.
  */
 export function paintReef(ctx: Ctx, tiles: ReefTiles, view: View, scale: number, state: SceneState): void {
+  const tier = state.tier ?? 0;
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'miter';
   paintOuterSea(ctx, view);
   tiles.draw(ctx, view, scale);
-  paintWaves(ctx, view, state.timeMs);
+  // The drifting crescents are open sea's only motion and nothing reads them.
+  if (tier < 1) paintWaves(ctx, view, state.timeMs);
   const level = state.tide.level;
   const favoured = state.tide.favoured;
   paintShoalLive(ctx, view, SHOAL_NORTH, level, PEARL_BEDS_NORTH, favoured === BLUE, FLOODABLE.north, state);
   paintShoalLive(ctx, view, SHOAL_SOUTH, 1 - level, PEARL_BEDS_SOUTH, favoured === RED, FLOODABLE.south, state);
   paintChevrons(ctx, view, state);
-  paintDockLive(ctx, view, BLUE, state);
-  paintDockLive(ctx, view, RED, state);
-  paintLamps(ctx, view, state.timeMs);
+  paintDockLive(ctx, view, BLUE, state, tier);
+  paintDockLive(ctx, view, RED, state, tier);
+  if (tier < 1) paintLamps(ctx, view, state.timeMs);
+  else paintLampsBatched(ctx, view);
   paintKelp(ctx, view, state.timeMs);
-  paintGate(ctx, view, BLUE, state.gateShut[BLUE], state);
-  paintGate(ctx, view, RED, state.gateShut[RED], state);
+  const gate = tier < 1 ? paintGate : paintGateBatched;
+  gate(ctx, view, BLUE, state.gateShut[BLUE], state);
+  gate(ctx, view, RED, state.gateShut[RED], state);
   ctx.restore();
 }

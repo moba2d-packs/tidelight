@@ -6,6 +6,8 @@ import { ensureHeart, getHeart, tideTraits, type Heart, type TideTraits } from '
 import { BLUE, RED, type Court } from './layout';
 import { INK, courtColor, type Rgb } from './palette';
 import { ESCORT_RADIUS } from './rules';
+import { arcTo_, fillEllipse, pen, rgba } from './art/draw';
+import { renderTier } from './art/tier';
 import { ensureOn } from '../maps/onMap';
 import { HILL_MAP_ID } from '../maps/hill/layout';
 import { createHill } from '../maps/hill/hill';
@@ -220,35 +222,61 @@ export class TideZone extends api.AreaSpellObject {
   glyph: 'storm' | 'pool' = 'pool';
   lifeMs = 3000;
 
+  /**
+   * On the 2D context rather than through p5, on every tier: the same paths,
+   * without p5's argument normalising and colour parsing around each one.
+   *
+   * Once the machine is behind (`renderTier` 1 and up) the rim's eighteen
+   * dashes and the five glyphs ride ONE stroke — a stroke bills a phone's GPU
+   * canvas the same whether it carries one dash or twenty-three, and a fight
+   * lays several of these at once. Tier 0 keeps a stroke a shape: merged, the
+   * translucent rim came out up to 2 levels off on ~500 pixels on a PowerVR
+   * canvas, and tier 0 is the promise that nothing moved.
+   *
+   * The glyphs are the zone's flavour, not its edge; a machine that is
+   * drowning (tier 2) keeps the disc and the rim, which are what say where
+   * the damage is.
+   */
   draw(): void {
     const at = this.center;
     const t = this.elapsedMs / 1000;
     const fade = Math.min(1, Math.max(0, (this.lifeMs - this.elapsedMs) / 400));
     const c = this.tint;
-    push();
-    noStroke();
-    fill(c[0], c[1], c[2], 46 * fade);
-    circle(at.x, at.y, this.radius * 2);
-    noFill();
-    stroke(c[0], c[1], c[2], 210 * fade);
-    strokeWeight(4);
+    const tier = renderTier(this.game);
+    const batch = tier >= 1;
+    const ctx = drawingContext as CanvasRenderingContext2D;
+    ctx.save();
+    ctx.lineCap = 'round';
+    fillEllipse(ctx, rgba(c, 46 * fade), at.x, at.y, this.radius * 2, this.radius * 2);
+    pen(ctx, rgba(c, 210 * fade), 4);
+    if (batch) ctx.beginPath();
     const dashes = 18;
     for (let i = 0; i < dashes; i++) {
       const a0 = t * 0.9 + (i / dashes) * Math.PI * 2;
-      arc(at.x, at.y, this.radius * 2, this.radius * 2, a0, a0 + (Math.PI / dashes) * 1.1);
+      if (!batch) ctx.beginPath();
+      arcTo_(ctx, at.x, at.y, this.radius * 2, this.radius * 2, a0, a0 + (Math.PI / dashes) * 1.1);
+      if (!batch) ctx.stroke();
     }
-    for (let i = 0; i < 5; i++) {
-      const a = -t * 1.8 + (i / 5) * Math.PI * 2;
-      const r = this.radius * (0.35 + 0.3 * ((i * 37) % 10) * 0.1);
-      const x = at.x + Math.cos(a) * r;
-      const y = at.y + Math.sin(a) * r;
-      if (this.glyph === 'storm') {
-        arc(x, y, 46, 30, a, a + Math.PI);
-      } else {
-        circle(x, y, 16 + Math.sin(t * 4 + i) * 5);
+    if (tier < 2) {
+      for (let i = 0; i < 5; i++) {
+        const a = -t * 1.8 + (i / 5) * Math.PI * 2;
+        const r = this.radius * (0.35 + 0.3 * ((i * 37) % 10) * 0.1);
+        const x = at.x + Math.cos(a) * r;
+        const y = at.y + Math.sin(a) * r;
+        if (!batch) ctx.beginPath();
+        if (this.glyph === 'storm') {
+          arcTo_(ctx, x, y, 46, 30, a, a + Math.PI);
+        } else {
+          const d = Math.max(0, 16 + Math.sin(t * 4 + i) * 5);
+          ctx.moveTo(x + d / 2, y);
+          ctx.ellipse(x, y, d / 2, d / 2, 0, 0, Math.PI * 2);
+          ctx.closePath();
+        }
+        if (!batch) ctx.stroke();
       }
     }
-    pop();
+    if (batch) ctx.stroke();
+    ctx.restore();
   }
 }
 
