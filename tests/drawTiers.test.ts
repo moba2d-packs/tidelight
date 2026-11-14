@@ -12,7 +12,7 @@ import { buildTestApi, createGame, stubGameGlobals, type TestGame } from '@moba2
 import { setPackApi } from '../packApi';
 import { BLUE } from '../world/layout';
 import { createHeart } from '../world/heart';
-import { layZone } from '../world/fx';
+import { layZone, TideMark, type Ornament } from '../world/fx';
 import { renderTier } from '../world/art/tier';
 
 const { Champion } = buildTestApi().units;
@@ -111,6 +111,55 @@ describe('a tide zone', () => {
     expect(at2.paints()).toBe(2);
     // a pool glyph is one `moveTo` + one `ellipse` on top of the rim's path
     expect(at1.of('ellipse') - at2.of('ellipse')).toBe(5);
+  });
+});
+
+describe('a hero\'s tide mark', () => {
+  const mark = (ornament: Ornament) => {
+    const made = new TideMark(0, owner, owner);
+    made.ornament = ornament;
+    return made as unknown as { draw(): void };
+  };
+  const p5Calls = () =>
+    ['ellipse', 'circle', 'rect', 'arc', 'triangle', 'fill', 'push']
+      .map(name => ((globalThis as any)[name] as ReturnType<typeof vi.fn>).mock.calls.length)
+      .reduce((a, b) => a + b, 0);
+
+  it('keeps one fill a shape at tier 0, on the context instead of through p5', () => {
+    // the ring is the one stroke; then per ornament a shadow and its pieces
+    const fills: Record<Ornament, number> = { anchor: 6, shell: 4, flame: 6, fin: 4, feather: 4 };
+    for (const ornament of Object.keys(fills) as Ornament[]) {
+      const at0 = painted(mark(ornament), 0);
+      expect(at0.of('stroke')).toBe(1);
+      expect(at0.of('fill')).toBe(fills[ornament]);
+      // p5's own paths: a circle is `ellipse` + `closePath`, never `arc`
+      expect(at0.of('arc')).toBe(0);
+    }
+    expect(p5Calls()).toBe(0);
+  });
+
+  it('gives both ornaments one fill, and both shadows one, once the machine is behind', () => {
+    for (const ornament of ['anchor', 'shell', 'flame', 'fin', 'feather'] as Ornament[]) {
+      const at1 = painted(mark(ornament), 1);
+      expect(at1.of('stroke')).toBe(1);
+      expect(at1.of('fill')).toBe(2);
+    }
+  });
+
+  it('drops the shadows at tier 2 and keeps the ring and the ornaments', () => {
+    const subject = mark('flame');
+    const at1 = painted(subject, 1);
+    const at2 = painted(subject, 2);
+    expect(at2.of('stroke')).toBe(1);
+    expect(at2.of('fill')).toBe(1);
+    // the two shadow discs are what went; a flame's own two discs stay
+    expect(at1.of('ellipse') - at2.of('ellipse')).toBe(2);
+    expect(at2.of('ellipse')).toBe(3);
+  });
+
+  it('draws nothing on a dead hero', () => {
+    vi.spyOn(owner, 'isDead', 'get').mockReturnValue(true);
+    expect(painted(mark('fin'), 0).paints()).toBe(0);
   });
 });
 

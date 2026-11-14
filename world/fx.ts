@@ -305,6 +305,66 @@ export function layZone(
 
 export type Ornament ='anchor' | 'shell' | 'flame' | 'fin' | 'feather';
 
+/** How many separate fills p5 gave each ornament. */
+const ORNAMENT_PIECES: Record<Ornament, number> = { anchor: 2, shell: 1, flame: 2, fin: 1, feather: 1 };
+
+/**
+ * A whole ellipse as p5's `ellipse` emits it (`ellipse`, then `closePath`).
+ * `join` is for a path that already holds other shapes: it lifts the pen first,
+ * or the context would draw a line in from wherever the last shape ended.
+ */
+function discPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, join: boolean): void {
+  if (join) ctx.moveTo(x + w / 2, y);
+  ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.closePath();
+}
+
+/** A filled slice as p5's `arc` emits it: the arc, a line to the centre, closed. */
+function slicePath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, a0: number, a1: number, join: boolean): void {
+  if (join) ctx.moveTo(x + Math.cos(a0) * (w / 2), y + Math.sin(a0) * (h / 2));
+  ctx.ellipse(x, y, w / 2, h / 2, 0, a0, a1);
+  ctx.lineTo(x, y);
+  ctx.closePath();
+}
+
+/**
+ * One piece of a `TideMark` ornament, appended to the current path — the path
+ * p5 built for the same primitive. Joined into a shared path the triangles are
+ * wound the other way: their piece overlaps a disc, and two shapes wound
+ * against each other in one nonzero fill would punch a hole where they meet.
+ */
+function ornamentPath(ctx: CanvasRenderingContext2D, ornament: Ornament, piece: number, ox: number, oy: number, k: number, join: boolean): void {
+  if (ornament === 'anchor') {
+    if (piece === 0) {
+      const w = k * 0.32;
+      const h = k * 1.2;
+      const r = Math.min(2, w / 2, h / 2);
+      ctx.roundRect(ox - k * 0.16, oy - k * 0.7, w, h, [r, r, r, r]);
+    } else slicePath(ctx, ox, oy + k * 0.2, k * 1.3, k * 1.1, 0, Math.PI, join);
+  } else if (ornament === 'shell') {
+    slicePath(ctx, ox, oy + k * 0.3, k * 1.5, k * 1.6, Math.PI, Math.PI * 2, join);
+  } else if (ornament === 'flame') {
+    if (piece === 0) trianglePath(ctx, ox, oy - k * 0.9, ox - k * 0.5, oy + k * 0.4, ox + k * 0.5, oy + k * 0.4, join);
+    else discPath(ctx, ox, oy + k * 0.2, k, k, join);
+  } else if (ornament === 'fin') {
+    trianglePath(ctx, ox - k * 0.7, oy + k * 0.5, ox + k * 0.7, oy + k * 0.5, ox + k * 0.3, oy - k * 0.8, join);
+  } else {
+    discPath(ctx, ox, oy, k * 0.6, k * 1.7, join);
+  }
+}
+
+function trianglePath(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, flip: boolean): void {
+  ctx.moveTo(x1, y1);
+  if (flip) {
+    ctx.lineTo(x3, y3);
+    ctx.lineTo(x2, y2);
+  } else {
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+  }
+  ctx.closePath();
+}
+
 /**
  * The mark a hero's passive leaves on them: a small paper ornament orbiting
  * the portrait, a court-coloured ground ring, and — while a pearl's glow is on
@@ -331,6 +391,19 @@ export class TideMark extends api.buffs.Buff {
     if (!this.targetUnit.isDead) this.rule?.(this.targetUnit, dt);
   }
 
+  /**
+   * On the 2D context rather than through p5, on every tier — every hero wears
+   * one of these every frame, and the p5 version was up to nine primitives
+   * each behind `fill()`'s colour parsing (measured ~0.8ms a hero on a Helio
+   * P35).
+   *
+   * Tier 0 emits the paths p5 did, one fill a shape, in p5's order: the same
+   * pixels. Once the machine is behind (`renderTier` 1 and up) the two
+   * ornaments share one fill, their two shadows another, and the pearl loses
+   * its halo; a machine that is drowning (tier 2) drops the shadows as well.
+   * The ring and the ornaments themselves never go: they are how five heroes
+   * are told apart at phone size.
+   */
   draw(): void {
     const unit = this.targetUnit;
     if (unit.isDead) return;
@@ -338,48 +411,74 @@ export class TideMark extends api.buffs.Buff {
     const size = unit.stats.size.value;
     const t = this.age / 1000;
     const court = courtColor(unit.teamId ?? null);
-    const c = this.tint;
-    push();
+    const tier = renderTier(unit.game);
+    const batch = tier >= 1;
+    const ctx = drawingContext as CanvasRenderingContext2D;
+    const k = size * 0.2;
+    const pieces = ORNAMENT_PIECES[this.ornament];
+    const spot = (i: number): Vec => {
+      const a = t * 1.7 + i * Math.PI;
+      return { x: at.x + Math.cos(a) * size * 0.78, y: at.y + Math.sin(a) * size * 0.3 - size * 0.1 };
+    };
+
+    ctx.save();
     // Ground ring, in the court's colour, under the feet.
-    noFill();
-    stroke(court[0], court[1], court[2], 120);
-    strokeWeight(3);
-    ellipse(at.x, at.y + size * 0.42, size * 1.5, size * 0.5);
-    noStroke();
+    pen(ctx, rgba(court as Rgb, 120), 3);
+    ctx.beginPath();
+    discPath(ctx, at.x, at.y + size * 0.42, size * 1.5, size * 0.5, false);
+    ctx.stroke();
 
     // Two ornaments orbiting on a tilted ellipse.
-    for (let i = 0; i < 2; i++) {
-      const a = t * 1.7 + i * Math.PI;
-      const ox = at.x + Math.cos(a) * size * 0.78;
-      const oy = at.y + Math.sin(a) * size * 0.3 - size * 0.1;
-      const k = size * 0.2;
-      fill(INK.SHADOW[0], INK.SHADOW[1], INK.SHADOW[2], 140);
-      circle(ox + 2, oy + 4, k * 1.3);
-      fill(c[0], c[1], c[2]);
-      if (this.ornament === 'anchor') {
-        rect(ox - k * 0.16, oy - k * 0.7, k * 0.32, k * 1.2, 2);
-        arc(ox, oy + k * 0.2, k * 1.3, k * 1.1, 0, Math.PI);
-      } else if (this.ornament === 'shell') {
-        arc(ox, oy + k * 0.3, k * 1.5, k * 1.6, Math.PI, Math.PI * 2);
-      } else if (this.ornament === 'flame') {
-        triangle(ox, oy - k * 0.9, ox - k * 0.5, oy + k * 0.4, ox + k * 0.5, oy + k * 0.4);
-        circle(ox, oy + k * 0.2, k);
-      } else if (this.ornament === 'fin') {
-        triangle(ox - k * 0.7, oy + k * 0.5, ox + k * 0.7, oy + k * 0.5, ox + k * 0.3, oy - k * 0.8);
-      } else {
-        ellipse(ox, oy, k * 0.6, k * 1.7);
+    const shadow = rgba(INK.SHADOW, 140);
+    const paper = rgba(this.tint);
+    if (!batch) {
+      for (let i = 0; i < 2; i++) {
+        const o = spot(i);
+        ctx.fillStyle = shadow;
+        ctx.beginPath();
+        discPath(ctx, o.x + 2, o.y + 4, k * 1.3, k * 1.3, false);
+        ctx.fill();
+        ctx.fillStyle = paper;
+        for (let piece = 0; piece < pieces; piece++) {
+          ctx.beginPath();
+          ornamentPath(ctx, this.ornament, piece, o.x, o.y, k, false);
+          ctx.fill();
+        }
       }
+    } else {
+      const a = spot(0);
+      const b = spot(1);
+      if (tier < 2) {
+        ctx.fillStyle = shadow;
+        ctx.beginPath();
+        discPath(ctx, a.x + 2, a.y + 4, k * 1.3, k * 1.3, true);
+        discPath(ctx, b.x + 2, b.y + 4, k * 1.3, k * 1.3, true);
+        ctx.fill();
+      }
+      ctx.fillStyle = paper;
+      ctx.beginPath();
+      for (let piece = 0; piece < pieces; piece++) {
+        ornamentPath(ctx, this.ornament, piece, a.x, a.y, k, true);
+        ornamentPath(ctx, this.ornament, piece, b.x, b.y, k, true);
+      }
+      ctx.fill();
     }
 
     const heart = heartOf(unit) as (Heart & { glowing?: (u: object) => boolean }) | null;
     if (heart?.glowing?.(unit)) {
       const bob = Math.sin(t * 4) * 3;
-      fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2], 70);
-      circle(at.x, at.y - size * 0.86 + bob, size * 0.5);
-      fill(INK.PEARL[0], INK.PEARL[1], INK.PEARL[2]);
-      circle(at.x, at.y - size * 0.86 + bob, size * 0.26);
+      if (!batch) {
+        ctx.fillStyle = rgba(INK.PEARL, 70);
+        ctx.beginPath();
+        discPath(ctx, at.x, at.y - size * 0.86 + bob, size * 0.5, size * 0.5, false);
+        ctx.fill();
+      }
+      ctx.fillStyle = rgba(INK.PEARL);
+      ctx.beginPath();
+      discPath(ctx, at.x, at.y - size * 0.86 + bob, size * 0.26, size * 0.26, false);
+      ctx.fill();
     }
-    pop();
+    ctx.restore();
   }
 }
 

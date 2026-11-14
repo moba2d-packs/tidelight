@@ -223,8 +223,23 @@ function build() {
       return tideAt(this.now, this.first, this.override);
     }
 
+    /**
+     * `wardensOf(...).some(alive)` without the list: this is asked for both
+     * courts every tick, and the list was built to be read once and dropped.
+     * Same test per turret as `wardensOf`, in the same order.
+     */
     gateShut(court: Court): boolean {
-      return wardensOf((this.game as any).turrets, court).some(turret => !turret.isDead);
+      const turrets: any[] | undefined = (this.game as any).turrets;
+      if (!turrets) return false;
+      const keep = KEEPS[court];
+      for (let i = 0; i < turrets.length; i++) {
+        const turret = turrets[i];
+        if (turret.teamId !== court) continue;
+        const at = turret.position;
+        if (at && !(Math.hypot(at.x - keep.x, at.y - keep.y) > KEEP_MATCH_PX)) continue;
+        if (!turret.isDead) return true;
+      }
+      return false;
     }
 
     kick(court: Court, distance: number): void {
@@ -255,10 +270,27 @@ function build() {
       this.flash = { text, untilMs: this.clockMs + ms };
     }
 
-    private unitsNear(center: Pt, radius: number): AttackableUnit[] {
+    /**
+     * The circle and the filter list are the Heart's own, re-aimed per call:
+     * the escort count asks this every tick, and nothing keeps the circle past
+     * the query it was handed to.
+     */
+    private readonly nearArea = new api.utils.Quadtree.Circle({ x: 0, y: 0, r: 0 });
+    private readonly nearFilters = [api.combat.PredefinedFilters.canTakeDamage];
+
+    private unitsNear(x: number, y: number, radius: number): AttackableUnit[] {
+      const area = this.nearArea;
+      area.x = x;
+      area.y = y;
+      area.r = radius;
+      const bounds = area.bounds;
+      bounds.minX = x - radius;
+      bounds.minY = y - radius;
+      bounds.maxX = x + radius;
+      bounds.maxY = y + radius;
       return this.world.objectManager.queryObjects({
-        area: new api.utils.Quadtree.Circle({ x: center.x, y: center.y, r: radius }),
-        filters: [api.combat.PredefinedFilters.canTakeDamage],
+        area,
+        filters: this.nearFilters,
       }) as AttackableUnit[];
     }
 
@@ -267,41 +299,61 @@ function build() {
       const warden = wardensOf(this.world.turrets, court).find(turret => !turret.isDead);
       if (!warden || typeof warden.takeDamage !== 'function') return;
       const at = this.lanternPos;
-      const pusher = this.unitsNear(at, ESCORT_RADIUS).find(
+      const pusher = this.unitsNear(at.x, at.y, ESCORT_RADIUS).find(
         unit => unit instanceof Champion && courtOf(unit.teamId) !== null && courtOf(unit.teamId) !== court
       );
       if (pusher) warden.takeDamage((GATE_BURN_PER_S * dtMs) / 1000, pusher);
     }
 
     private countEscort(): void {
-      const at = this.lanternPos;
-      const heroes = { [BLUE]: 0, [RED]: 0 };
-      const bonus = { [BLUE]: 0, [RED]: 0 };
-      const minions = { [BLUE]: 0, [RED]: 0 };
+      // Six running totals as locals and the lantern's spot as two numbers:
+      // this runs every tick, and the three tally objects and the point it
+      // used to build were garbage by the end of it.
+      const atX = railX(this.lanternS);
+      const atY = RAIL_Y;
+      let blueHeroes = 0;
+      let redHeroes = 0;
+      let blueBonus = 0;
+      let redBonus = 0;
+      let blueMinions = 0;
+      let redMinions = 0;
       const now = this.now;
-      for (const unit of this.unitsNear(at, ESCORT_RADIUS)) {
+      const near = this.unitsNear(atX, atY, ESCORT_RADIUS);
+      for (let i = 0; i < near.length; i++) {
+        const unit = near[i];
         const court = courtOf(unit.teamId);
         if (!court) continue;
-        if (Math.hypot(unit.position.x - at.x, unit.position.y - at.y) > ESCORT_RADIUS) continue;
+        if (Math.hypot(unit.position.x - atX, unit.position.y - atY) > ESCORT_RADIUS) continue;
         if (unit instanceof Champion) {
-          heroes[court] += 1;
-          bonus[court] += tideTraits.get(unit)?.escortBonus ?? 0;
-          if ((this.glow.get(unit) ?? 0) > now) bonus[court] += PEARL_ESCORT;
+          // Two separate additions per court, as before: folding them into
+          // one would change the order the floats are summed in.
+          const trait = tideTraits.get(unit)?.escortBonus ?? 0;
+          const pearl = (this.glow.get(unit) ?? 0) > now ? PEARL_ESCORT : 0;
+          if (court === BLUE) {
+            blueHeroes += 1;
+            blueBonus += trait;
+            if (pearl) blueBonus += pearl;
+          } else {
+            redHeroes += 1;
+            redBonus += trait;
+            if (pearl) redBonus += pearl;
+          }
         } else if (unit instanceof Minion) {
-          minions[court] += 1;
+          if (court === BLUE) blueMinions += 1;
+          else redMinions += 1;
         }
       }
       this.escort = {
-        blue: escortWeight(heroes[BLUE], bonus[BLUE], minions[BLUE]),
-        red: escortWeight(heroes[RED], bonus[RED], minions[RED]),
+        blue: escortWeight(blueHeroes, blueBonus, blueMinions),
+        red: escortWeight(redHeroes, redBonus, redMinions),
       };
     }
 
-    private runShoals(tide: TideState): void {
+    private runShoals(tide: TideState, everyone: AttackableUnit[]): void {
       const flooded = floodedShoal(tide);
       const dry = dryShoal(tide);
       const now = this.now;
-      const champions = this.unitsNear(CENTER, MAP_SIZE).filter(unit => unit instanceof Champion);
+      const champions = everyone.filter(unit => unit instanceof Champion);
       for (const unit of champions) {
         const court = courtOf(unit.teamId);
         if (!court) continue;
@@ -363,9 +415,18 @@ function build() {
       this.shoalClock += dtMs;
       if (this.shoalClock >= SHOAL_TICK_MS) {
         this.shoalClock = 0;
-        this.runShoals(tide);
-        for (const unit of this.unitsNear(CENTER, MAP_SIZE)) {
-          if (unit instanceof Champion) issueCharms(unit);
+        // One sweep of the map for both passes. The second used to ask again
+        // and get the same list unless the shoals had just made somebody
+        // unfit to be on it, so that is what it re-checks: the query's own
+        // `toRemove` and can-take-damage tests, per unit, at the moment the
+        // second query would have run them.
+        const everyone = this.unitsNear(CENTER.x, CENTER.y, MAP_SIZE);
+        this.runShoals(tide, everyone);
+        for (let i = 0; i < everyone.length; i++) {
+          const unit: any = everyone[i];
+          if (!(unit instanceof Champion)) continue;
+          if (unit.toRemove || !unit.targetable || unit.isDead) continue;
+          issueCharms(unit);
         }
       }
 
