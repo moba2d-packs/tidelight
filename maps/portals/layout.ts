@@ -1,6 +1,5 @@
 import { BLUE, MAP_SIZE, RED, type Court, type Pt } from '../../world/layout';
 import type { RockSpec } from '../../world/art/reef';
-import { blob } from '../../world/art/shapes';
 import { band, leftOf, lumps, slab, swapXY } from '../../world/art/coast';
 
 /**
